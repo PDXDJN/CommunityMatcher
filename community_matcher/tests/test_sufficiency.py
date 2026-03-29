@@ -17,7 +17,9 @@ def test_partial_profile_one_field():
     profile = UserProfile(goals=["find friends"])
     result = check_sufficiency(profile)
     assert not result.is_sufficient
-    assert result.score == 0.25
+    # goals set with no confidence → credit=0.7 (benefit-of-doubt), weight=0.30
+    # score = 0.30 * 0.7 = 0.21
+    assert result.score == 0.21
     assert "primary_goal" not in result.missing_categories
     assert "interest_cluster" in result.missing_categories
 
@@ -31,7 +33,9 @@ def test_full_profile_is_sufficient():
     )
     result = check_sufficiency(profile)
     assert result.is_sufficient
-    assert result.score == 1.0
+    # All fields set without extraction pipeline → confidence=None → credit=0.7 each
+    # score = (0.30 + 0.30 + 0.25 + 0.15) * 0.7 = 1.0 * 0.7 = 0.70
+    assert result.score == 0.7
     assert result.missing_categories == []
 
 

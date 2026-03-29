@@ -20,10 +20,14 @@ import structlog
 from community_matcher.agents import tool
 from community_matcher.db.schema_doc import SCHEMA_DOC
 
+# Ensure .env files are loaded before reading env vars below.
+import community_matcher.config.settings  # noqa: F401  (side-effect: load_dotenv)
+
 log = structlog.get_logger()
 
 _LLM_BASE_URL = os.getenv("CM_LLM_BASE_URL", "https://api.featherless.ai/v1")
-_LLM_API_KEY  = os.getenv("CM_LLM_API_KEY",  "")
+# Accept CM_LLM_API_KEY (canonical) or FEATHERLESS_API (legacy .env name)
+_LLM_API_KEY  = os.getenv("CM_LLM_API_KEY") or os.getenv("FEATHERLESS_API", "")
 _LLM_MODEL    = os.getenv("CM_LLM_MODEL",     "Qwen/Qwen3-8B")
 
 _SQL_GEN_PROMPT = f"""\
@@ -38,6 +42,7 @@ Rules:
 - For tag searches use LIKE '%"tagname"%' since tags are stored as JSON arrays in TEXT columns.
 - ALWAYS use OR (never AND) when combining multiple topic/tag conditions — AND returns too few results.
 - Prefer scrape_record for rich data (title, description, tags, source_url).
+- ALWAYS include these columns in every SELECT from scrape_record: source, source_url, title, tags.
 - Only filter on column names and tag values that exist in the schema above.
 - Do NOT invent tag values — only use tags listed in the schema (ai, python, startup, tech, etc.).
 - Output only the raw SQL statement on a single line.
@@ -84,6 +89,29 @@ def _generate_sql(question: str) -> str:
     return sql
 
 
+def _infer_source(url: str) -> str:
+    """Infer source platform from a URL string."""
+    u = (url or "").lower()
+    if "meetup.com" in u:
+        return "meetup"
+    if "eventbrite" in u:
+        return "eventbrite"
+    if "lu.ma" in u or "luma" in u:
+        return "luma"
+    return "unknown"
+
+
+def _fill_missing_source(rows: list[dict]) -> None:
+    """
+    Ensure every row has a 'source' field.
+    When the LLM-generated SQL omits the source column, infer it from source_url.
+    Mutates rows in-place.
+    """
+    for row in rows:
+        if not row.get("source"):
+            row["source"] = _infer_source(row.get("source_url", ""))
+
+
 @tool
 def txt2sql_tool(question: str) -> str:
     """
@@ -109,6 +137,7 @@ def txt2sql_tool(question: str) -> str:
     try:
         sql = _generate_sql(question)
         rows = execute_query(sql)
+        _fill_missing_source(rows)
         result = rows_to_json(rows)
         log.info("txt2sql.done", question=question[:80], row_count=len(rows))
         return result

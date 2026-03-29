@@ -19,7 +19,7 @@ from community_collector.utils.url_utils import normalize_url
 log = get_logger("adapter.eventbrite")
 
 _BASE_URL = "https://www.eventbrite.com"
-_WHITESPACE = re.compile(r"\s+")
+_INLINE_WS = re.compile(r"[ \t]+")
 
 
 def _search_url(location_slug: str, term: str, page_num: int = 1) -> str:
@@ -45,9 +45,6 @@ class EventbriteAdapter(BaseSourceAdapter):
 
         try:
             for page_num in range(1, 4):  # up to 3 pages
-                if len(results) >= config.max_results_per_source:
-                    break
-
                 url = _search_url(loc_slug, search_term, page_num)
                 log.info("eventbrite.fetch", url=url, page=page_num)
 
@@ -70,12 +67,13 @@ class EventbriteAdapter(BaseSourceAdapter):
                         pass
 
                 # Collect all anchors and filter for event detail links (/e/)
+                # Cap per-page (not per-run) so all 3 pages are attempted.
                 anchors = await page.locator("a[href]").all()
                 page_hits = 0
                 for a in anchors:
                     try:
                         href = await a.get_attribute("href") or ""
-                        text = _WHITESPACE.sub(
+                        text = _INLINE_WS.sub(
                             " ", (await a.text_content() or "")
                         ).strip()
                         if "/e/" not in href or not text or len(text) < 5:
@@ -104,7 +102,9 @@ class EventbriteAdapter(BaseSourceAdapter):
                             "source":      "eventbrite",
                         })
                         page_hits += 1
-                        if len(results) >= config.max_results_per_source:
+                        # Per-page cap: allow each page to contribute up to
+                        # max_results_per_source new events before moving on.
+                        if page_hits >= config.max_results_per_source:
                             break
                     except Exception as exc:
                         log.warning("eventbrite.anchor_parse_failed", error=str(exc))

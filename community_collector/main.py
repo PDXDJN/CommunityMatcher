@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import sys
 from community_collector.config import CollectorConfig
+from community_collector.keywords import DEFAULT_BERLIN_TOPICS
 from community_collector.orchestrator import run_collection
 from community_collector.utils.logging_utils import configure_logging
 
@@ -24,8 +25,8 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="City to search in (default: Berlin)")
     p.add_argument("--country",     default="Germany",
                    help="Country (default: Germany)")
-    p.add_argument("--terms",       default="AI,python,startup,hackerspace",
-                   help="Comma-separated search terms")
+    p.add_argument("--terms",       default="",
+                   help="Comma-separated search terms (default: all DEFAULT_BERLIN_TOPICS)")
     p.add_argument("--sources",     default="meetup,eventbrite,luma",
                    help="Comma-separated source names")
     p.add_argument("--max-results", type=int, default=20,
@@ -44,10 +45,11 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     configure_logging(args.log_level)
 
+    terms = [t.strip() for t in args.terms.split(",") if t.strip()] if args.terms else DEFAULT_BERLIN_TOPICS
     config = CollectorConfig(
         location=args.location,
         country=args.country,
-        search_terms=[t.strip() for t in args.terms.split(",") if t.strip()],
+        search_terms=terms,
         sources_to_run=[s.strip() for s in args.sources.split(",") if s.strip()],
         max_results_per_source=args.max_results,
         headless=not args.no_headless,

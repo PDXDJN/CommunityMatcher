@@ -101,20 +101,27 @@ _DATE_PAT = re.compile(
     re.IGNORECASE,
 )
 _FREQ_PAT = re.compile(r'\s*(?:Monthly|Weekly|Biweekly|Daily)\s*$', re.IGNORECASE)
+_EVERY_DAY_PAT = re.compile(
+    r'\s*Every\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s*$', re.IGNORECASE
+)
+# Strips leading availability noise concatenated directly onto the title,
+# e.g. "4 seats leftEnglish stand-up..." (no space/newline boundary).
+_SEATS_PREFIX_PAT = re.compile(r'^\d+\s*seats?\s*left\s*', re.IGNORECASE)
 _WHITESPACE = re.compile(r'\s+')
 
 
 def clean_title(raw: str) -> str:
     """
     Clean a raw scraped title.
-    Copied from Event_Finder/app/agents/meetup.py :: _clean_title().
-    Removes date suffixes, frequency labels, and excess whitespace.
+    Removes leading "N seats left" noise, date/frequency suffixes, and excess whitespace.
     """
     title = raw.split('\n')[0].strip()
+    title = _SEATS_PREFIX_PAT.sub('', title)
     if '·' in title:
         title = title[:title.index('·')].strip()
     title = _DATE_PAT.sub('', title).strip()
     title = _FREQ_PAT.sub('', title).strip()
+    title = _EVERY_DAY_PAT.sub('', title).strip()
     return _WHITESPACE.sub(' ', title).strip()
 
 

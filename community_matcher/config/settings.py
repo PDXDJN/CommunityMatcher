@@ -3,6 +3,17 @@ import os
 from pathlib import Path
 from pydantic import BaseModel
 
+# Load .env files if present (project root, then community_collector/).
+# This ensures FEATHERLESS_API / CM_LLM_* vars are available before any
+# module reads os.getenv at import time.
+try:
+    from dotenv import load_dotenv
+    _root = Path(__file__).parent.parent.parent
+    load_dotenv(_root / ".env", override=False)
+    load_dotenv(_root / "community_collector" / ".env", override=False)
+except ImportError:
+    pass
+
 # Canonical SQLite path — shared by the DB connection layer and the live collector.
 # Override with CM_SQLITE_DB_PATH if the database lives elsewhere.
 _DEFAULT_SQLITE_DB = str(
