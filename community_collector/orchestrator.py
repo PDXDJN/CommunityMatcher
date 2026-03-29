@@ -119,6 +119,18 @@ async def collect_async(config: CollectorConfig) -> CollectionResult:
             if record:
                 normalized.append(record)
 
+    # Add curated Berlin communities (static, no browser needed)
+    try:
+        from community_collector.adapters.berlin_communities_adapter import records_from_curated
+        curated = records_from_curated({
+            "search_terms": config.search_terms,
+            "category_filters": [],
+        })
+        normalized.extend(curated)
+        log.info("orchestrator.curated_added", count=len(curated))
+    except Exception as exc:
+        log.warning("orchestrator.curated_failed", error=str(exc))
+
     log.info("orchestrator.normalized_total", count=len(normalized))
 
     # Deduplicate by canonical_url

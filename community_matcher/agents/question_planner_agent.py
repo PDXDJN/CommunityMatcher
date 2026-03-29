@@ -27,15 +27,29 @@ _QUESTION_BANK = {
 _SYSTEM_PROMPT = """\
 You are a question selection specialist for CommunityMatcher Berlin.
 
-Given the current user profile and a list of missing profile categories,
-select the next 1-3 highest-value clarification questions to ask.
+Given the current user profile (including field confidence levels) and missing categories,
+select the NEXT 1-3 highest-value clarification questions to ask.
 
-Prioritise questions that will most improve community recommendation quality.
-Combine related questions into one natural sentence when possible.
-Be concise and friendly. Use plain language.
+Confidence levels for existing fields:
+  explicit      — user stated it directly (high confidence, no need to re-ask)
+  inferred_high — strongly implied (usually fine, ask only if it's the most valuable gap)
+  inferred_low  — weakly inferred from keywords (worth confirming if it's a key field)
+  unknown/null  — not present at all (should be asked if it's in the required set)
 
-Output a JSON array of question strings. No explanation. No markdown.
-Example: ["What kind of social vibe are you looking for?", "How far are you willing to travel?"]
+Priority order:
+  1. Required missing fields: primary_goal, interest_cluster, social_mode, logistics
+  2. Low-confidence required fields (inferred_low) — a confirming question doubles accuracy
+  3. Optional but high-value: language_pref, dealbreakers, budget
+
+Rules:
+  - Ask at most 3 questions total.
+  - Combine related questions naturally: e.g. "Are you looking for friends or professional connections, and do you prefer casual drinks or workshops?"
+  - Skip fields that are already explicit.
+  - Be concise and friendly. Plain language. No jargon.
+  - If a field is inferred_low, gently confirm: "You mentioned tech — is AI/software your main focus, or something broader?"
+
+Output ONLY a JSON array of question strings. No explanation. No markdown.
+Example: ["What kind of social vibe are you after?", "How far are you happy to travel?"]
 """
 
 
@@ -67,11 +81,23 @@ def question_planner_tool(profile_json: str) -> str:
         if not missing:
             return "[]"
 
+        # Build confidence summary for the LLM
+        confidence_summary = {
+            field: conf.value if hasattr(conf, "value") else str(conf)
+            for field, conf in (profile.field_confidence or {}).items()
+        }
+        low_confidence_fields = [
+            f for f, c in confidence_summary.items()
+            if c in ("inferred_low", "unknown")
+        ]
+
         # Try LLM for smarter question selection
         user_msg = (
             f"Profile so far: {profile_json}\n"
-            f"Missing categories: {missing}\n"
-            f"Available question bank:\n"
+            f"Field confidence: {json.dumps(confidence_summary)}\n"
+            f"Missing required categories: {missing}\n"
+            f"Low-confidence fields worth confirming: {low_confidence_fields}\n"
+            f"Question bank for missing fields:\n"
             + "\n".join(f"  {k}: {v}" for k, v in _QUESTION_BANK.items() if k in missing)
         )
 

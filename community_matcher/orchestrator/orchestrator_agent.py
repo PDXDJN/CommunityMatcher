@@ -207,74 +207,85 @@ def _build_search_query(state: SessionState) -> str:
 
 # ── Live-search fallback ─────────────────────────────────────────────────────
 
+def _build_live_search_terms(
+    state: SessionState, query_intents: list[str] | None = None
+) -> list[str]:
+    """Derive search terms for a live collection run from query intents + profile."""
+    profile = state.profile
+    terms: list[str] = list(query_intents or [])
+
+    if len(terms) < 3:
+        for interest in profile.interests[:4]:
+            t = interest.replace("_", " ")
+            if t not in terms:
+                terms.append(t)
+        for goal in profile.goals[:2]:
+            if goal == "friends":
+                terms.append("social community Berlin")
+            elif goal == "networking":
+                terms.append("networking Berlin")
+            elif goal == "learning":
+                terms.append("workshop Berlin")
+        if profile.social_mode in ("workshop", "talk", "project"):
+            t = f"{profile.social_mode} Berlin"
+            if t not in terms:
+                terms.append(t)
+
+    if not terms:
+        user_turns = [t["content"] for t in state.conversation_history if t["role"] == "user"]
+        terms = [user_turns[0][:60]] if user_turns else ["tech community Berlin"]
+
+    return terms[:6]
+
+
 def _run_live_collection(
     state: SessionState, query_intents: list[str] | None = None
 ) -> str | None:
     """
     Trigger a focused live scrape when the DB has no matching results.
 
-    Uses query_intents (from search_planner_tool) as primary search terms so the
-    scraper targets exactly what the SQL query asked for.  Falls back to profile-
-    derived terms when query_intents is empty.
+    Primary path: calls the collector via its MCP server (isolated subprocess,
+    no Playwright event-loop conflicts with the FastAPI server).
 
-    Saves results to the shared SQLite DB, then returns a preamble string to
-    prepend to the recommendation output (or None on error).
+    Fallback: direct module import (for CLI / non-server usage).
 
-    This call is synchronous and may take 2-5 minutes.
+    Returns a preamble string to prepend to the recommendation output, or None on error.
     """
+    terms = _build_live_search_terms(state, query_intents)
+    log.info("orchestrator.live_search", terms=terms)
+
+    # Primary: MCP client (decoupled subprocess)
+    try:
+        from community_matcher.tools.collector_mcp_client import live_search
+        result = live_search(terms, max_results=30, print_progress=True)
+        if result is not None:
+            return result
+        log.debug("orchestrator.mcp_live_returned_none_fallback")
+    except Exception as exc:
+        log.debug("orchestrator.mcp_client_unavailable", error=str(exc))
+
+    # Fallback: direct import (CLI mode / tests)
     try:
         from community_collector.orchestrator import run_collection
         from community_collector.config import CollectorConfig
 
-        profile = state.profile
-
-        # Prefer the planner's query intents — they already express the user's
-        # request in search-engine terms and match what txt2sql will look for.
-        terms: list[str] = list(query_intents or [])
-
-        # Supplement with profile signals when we have fewer than 3 terms.
-        if len(terms) < 3:
-            for interest in profile.interests[:4]:
-                t = interest.replace("_", " ")
-                if t not in terms:
-                    terms.append(t)
-            for goal in profile.goals[:2]:
-                if goal == "friends":
-                    terms.append("social community Berlin")
-                elif goal == "networking":
-                    terms.append("networking Berlin")
-                elif goal == "learning":
-                    terms.append("workshop Berlin")
-            if profile.social_mode in ("workshop", "talk", "project"):
-                t = f"{profile.social_mode} Berlin"
-                if t not in terms:
-                    terms.append(t)
-
-        # Fall back to first user message words
-        if not terms:
-            user_turns = [t["content"] for t in state.conversation_history if t["role"] == "user"]
-            if user_turns:
-                terms = [user_turns[0][:60]]
-            else:
-                terms = ["tech community Berlin"]
-
-        log.info("orchestrator.live_search", terms=terms)
         print(
             "\n[Searching live — nothing found in local database. "
             "This may take 1-2 minutes...]\n",
             flush=True,
         )
-
         cfg = CollectorConfig(
-            search_terms=terms[:6],
-            sources_to_run=["meetup", "luma"],  # fastest two sources
+            search_terms=terms,
+            sources_to_run=["meetup", "luma"],
             max_results_per_source=30,
             headless=True,
-            db_path=settings.sqlite_db_path,  # same DB the matcher queries
+            db_path=settings.sqlite_db_path,
         )
         run_collection(cfg)
-        return "I couldn't find much in my local database, so I did a live search — this took a few minutes but here's what I found:\n\n"
-
+        return (
+            "I couldn't find much in my local database, so I did a live search — "
+            "this took a few minutes but here's what I found:\n\n"
+        )
     except Exception as exc:
         log.warning("orchestrator.live_search_failed", error=str(exc))
         return None

@@ -106,10 +106,29 @@ def _logistics_fit(profile_logistics, candidate_tags: list[str], combined_text: 
     return 0.45 if known_in_text else 0.4
 
 
-def _values_fit(dealbreakers: list[str], combined_text: str) -> float:
+def _values_fit(dealbreakers: list[str], combined_text: str, vibe: dict | None = None) -> float:
+    """Score values alignment. Returns 0.0 if any dealbreaker is hit.
+
+    Uses both text matching and the LLM-powered vibe dimensions (alcohol_centrality,
+    corporate_ness) when available for more accurate dealbreaker detection.
+    """
     t = combined_text.lower()
+    alcohol  = (vibe or {}).get("alcohol_centrality", None)
+    corporate = (vibe or {}).get("corporate_ness", None)
+
     for db in dealbreakers:
-        if db.lower() in t:
+        db_lower = db.lower()
+        # Structural vibe-dimension checks (more reliable than text matching)
+        if db_lower in ("alcohol", "too much alcohol", "alcohol-heavy") and alcohol is not None:
+            if alcohol > 0.6:
+                return 0.0
+            continue
+        if db_lower in ("corporate", "too corporate") and corporate is not None:
+            if corporate > 0.6:
+                return 0.0
+            continue
+        # Text-based fallback for all other dealbreakers
+        if db_lower in t:
             return 0.0
     return 1.0
 
@@ -141,7 +160,7 @@ def _score_candidate(candidate: dict, profile: dict) -> dict:
         "newcomer_friendliness": round(vibe.get("newcomer_friendliness", 0.5), 3),
         "logistics_fit":         round(_logistics_fit(logistics, tags, combined_text), 3),
         "language_fit":          round(_language_fit(lang_pref, tags), 3),
-        "values_fit":            round(_values_fit(dealbreakers, combined_text), 3),
+        "values_fit":            round(_values_fit(dealbreakers, combined_text, vibe), 3),
         "recurrence_strength":   round(_recurrence_strength(tags), 3),
         "risk_sanity":           round(risk.get("risk_sanity_score", 0.8), 3),
     }
