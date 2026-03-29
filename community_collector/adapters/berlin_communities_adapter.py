@@ -191,7 +191,7 @@ _COMMUNITIES: list[dict] = [
 class BerlinCommunitiesAdapter(BaseSourceAdapter):
     source_name = "berlin_curated"
 
-    async def collect(self, request: dict) -> list[dict]:
+    def collect_sync(self, request: dict) -> list[dict]:
         """
         Return curated Berlin community records matching any of the request's
         search_terms or category_filters. If no filters are specified, return all.
@@ -231,16 +231,18 @@ class BerlinCommunitiesAdapter(BaseSourceAdapter):
 
         return results
 
+    async def collect(self, request: dict) -> list[dict]:
+        """Async wrapper — delegates to collect_sync (no I/O needed)."""
+        return self.collect_sync(request)
+
 
 def records_from_curated(request: dict) -> list[CommunityEventRecord]:
     """
     Synchronous helper: run the curated adapter and return normalized records.
-    Used by the collector orchestrator.
+    Used by the collector orchestrator (sync and async contexts both work).
     """
-    import asyncio
-
     adapter = BerlinCommunitiesAdapter()
-    raw = asyncio.run(adapter.collect(request))
+    raw = adapter.collect_sync(request)
 
     records: list[CommunityEventRecord] = []
     for item in raw:
