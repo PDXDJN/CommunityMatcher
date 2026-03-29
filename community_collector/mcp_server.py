@@ -19,8 +19,20 @@ Environment variables forwarded from the parent process:
 """
 from __future__ import annotations
 import json
+import logging
 import sys
 from pathlib import Path
+
+# ── Redirect all logging to stderr ───────────────────────────────────────────
+# MCP stdio transport uses stdout exclusively for JSON-RPC messages.
+# Any text written to stdout (structlog, print, etc.) breaks the protocol.
+logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
+
+# Redirect structlog to stderr before any other import touches it
+import structlog
+structlog.configure(
+    logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+)
 
 from mcp.server.fastmcp import FastMCP
 
@@ -35,7 +47,7 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-def search_communities(
+async def search_communities(
     search_terms: list[str],
     max_results_per_source: int = 25,
 ) -> str:
@@ -69,19 +81,24 @@ def search_communities(
     log.info("mcp_server.search_start", terms=terms)
 
     try:
+        from community_collector.orchestrator import collect_async
         cfg = CollectorConfig(
             search_terms=terms,
             sources_to_run=["meetup", "luma"],
             max_results_per_source=max(1, min(50, max_results_per_source)),
             headless=True,
         )
-        run_collection(cfg)
+        # Use await directly — FastMCP already runs inside an async event loop
+        collection_result = await collect_async(cfg)
 
         result = {
             "terms_used": terms,
-            "sources_run": ["meetup", "luma"],
-            "records_saved": -1,   # collector doesn't yet return a count; -1 = unknown
-            "summary": f"Live search complete for: {', '.join(terms)}. Results saved to database.",
+            "sources_run": collection_result.sources_attempted,
+            "records_saved": collection_result.normalized_total,
+            "summary": (
+                f"Live search complete for: {', '.join(terms)}. "
+                f"Saved {collection_result.normalized_total} records."
+            ),
         }
         log.info("mcp_server.search_done", terms=terms)
         return json.dumps(result)
