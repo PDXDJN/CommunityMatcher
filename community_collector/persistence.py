@@ -95,6 +95,11 @@ CREATE TABLE IF NOT EXISTS scrape_record (
     vibe_signals         TEXT,       -- JSON array
     raw_category         TEXT,
     language             TEXT,
+    detected_language    TEXT,
+    title_en             TEXT,
+    description_en       TEXT,
+    title_de             TEXT,
+    description_de       TEXT,
     extraction_timestamp TEXT,
     search_term          TEXT,
     c_idx                INTEGER REFERENCES community(idx),
@@ -142,9 +147,23 @@ def _connect(db_path: str) -> sqlite3.Connection:
 
 
 def init_db(db_path: str) -> None:
-    """Create all tables if they don't exist."""
+    """Create all tables if they don't exist, and migrate existing ones."""
     with _connect(db_path) as conn:
         conn.executescript(_SCHEMA_SQL)
+        # Idempotent column migrations for translation fields
+        _migrate_add_column(conn, "scrape_record", "detected_language", "TEXT")
+        _migrate_add_column(conn, "scrape_record", "title_en",          "TEXT")
+        _migrate_add_column(conn, "scrape_record", "description_en",    "TEXT")
+        _migrate_add_column(conn, "scrape_record", "title_de",          "TEXT")
+        _migrate_add_column(conn, "scrape_record", "description_de",    "TEXT")
+
+
+def _migrate_add_column(conn: sqlite3.Connection, table: str, column: str, col_type: str) -> None:
+    """Add a column to an existing table if it doesn't already exist."""
+    cur = conn.execute(f"PRAGMA table_info({table})")
+    existing = {row[1] for row in cur.fetchall()}
+    if column not in existing:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
 
 
 # ---------------------------------------------------------------------------
@@ -237,16 +256,23 @@ def _insert_scrape_record(
             venue_name, venue_address, city, country, is_online,
             cost_text, cost_factor, currency,
             tags, topic_signals, audience_signals, format_signals, vibe_signals,
-            raw_category, language, extraction_timestamp, search_term,
+            raw_category, language, detected_language,
+            title_en, description_en, title_de, description_de,
+            extraction_timestamp, search_term,
             c_idx, raw_payload
         ) VALUES (
-            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
         )
         ON CONFLICT(source_url) DO UPDATE SET
             description          = excluded.description,
             extraction_timestamp = excluded.extraction_timestamp,
             tags                 = excluded.tags,
-            cost_factor          = excluded.cost_factor
+            cost_factor          = excluded.cost_factor,
+            title_en             = excluded.title_en,
+            description_en       = excluded.description_en,
+            title_de             = excluded.title_de,
+            description_de       = excluded.description_de,
+            detected_language    = excluded.detected_language
         """,
         (
             rec.source, rec.source_record_id, rec.source_url, rec.canonical_url,
@@ -260,7 +286,9 @@ def _insert_scrape_record(
             json.dumps(rec.audience_signals),
             json.dumps(rec.format_signals),
             json.dumps(rec.vibe_signals),
-            rec.raw_category, rec.language, rec.extraction_timestamp, rec.search_term,
+            rec.raw_category, rec.language, rec.detected_language,
+            rec.title_en, rec.description_en, rec.title_de, rec.description_de,
+            rec.extraction_timestamp, rec.search_term,
             c_idx,
             json.dumps(rec.raw_payload, default=str),
         ),

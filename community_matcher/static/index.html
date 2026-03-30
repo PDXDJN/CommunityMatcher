@@ -44,29 +44,31 @@
       <span class="text-2xl">🏘</span>
       <div>
         <h1 class="text-lg font-bold leading-tight">Community Matcher</h1>
-        <p id="status-line" class="text-xs text-zinc-400">Find your people in Berlin</p>
+        <p id="status-line" class="text-xs text-zinc-400" data-i18n="tagline">Find your people in Berlin</p>
       </div>
     </div>
 
     <!-- Phase progress track -->
     <div class="flex items-center gap-1.5 flex-1 flex-wrap min-w-0">
-      <span class="phase-step upcoming" id="phase-intake">Intake</span>
+      <span class="phase-step upcoming" id="phase-intake" data-i18n="phase_intake">Intake</span>
       <span class="text-zinc-600 text-xs">→</span>
-      <span class="phase-step upcoming" id="phase-questioning">Profiling</span>
+      <span class="phase-step upcoming" id="phase-questioning" data-i18n="phase_profiling">Profiling</span>
       <span class="text-zinc-600 text-xs">→</span>
-      <span class="phase-step upcoming" id="phase-searching">Searching</span>
+      <span class="phase-step upcoming" id="phase-searching" data-i18n="phase_searching">Searching</span>
       <span class="text-zinc-600 text-xs">→</span>
-      <span class="phase-step upcoming" id="phase-recommending">Results</span>
+      <span class="phase-step upcoming" id="phase-recommending" data-i18n="phase_results">Results</span>
     </div>
 
     <!-- View tabs + dark toggle -->
     <div class="flex gap-1 shrink-0">
       <button id="btn-chat" onclick="setView('chat')"
-              class="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-700 text-white hover:bg-zinc-600 transition-colors">💬 Chat</button>
+              class="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-700 text-white hover:bg-zinc-600 transition-colors"><span data-i18n="btn_chat">💬 Chat</span></button>
       <button id="btn-communities" onclick="setView('communities')"
-              class="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors">🏘 Communities</button>
+              class="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors"><span data-i18n="btn_communities">🏘 Communities</span></button>
       <button id="btn-saved" onclick="setView('saved')"
-              class="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors">★ Saved</button>
+              class="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors"><span data-i18n="btn_saved">★ Saved</span></button>
+      <button id="lang-toggle" onclick="toggleLang()" title="Switch language / Sprache wechseln"
+              class="px-2.5 py-2 rounded-lg text-xs font-bold leading-none bg-zinc-800 hover:bg-zinc-700 transition-colors text-zinc-200">EN</button>
       <button id="dark-toggle" onclick="toggleDark()" title="Toggle light / dark mode"
               class="px-2.5 py-2 rounded-lg text-base leading-none bg-zinc-800 hover:bg-zinc-700 transition-colors">🌙</button>
     </div>
@@ -88,15 +90,16 @@
       </div>
       <div class="flex gap-2">
         <input id="chat-input" type="text"
+               data-i18n-placeholder="chat_placeholder"
                placeholder="Tell me what kind of community you're looking for…"
                class="flex-1 rounded-lg px-4 py-3 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                onkeydown="if(event.key==='Enter'&&!event.shiftKey)sendMessage()" />
         <button id="send-btn" onclick="sendMessage()"
                 class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg text-sm font-medium transition-colors">
-          Send
+          <span data-i18n="btn_send">Send</span>
         </button>
       </div>
-      <p class="text-xs text-gray-400 dark:text-gray-600 text-center">
+      <p class="text-xs text-gray-400 dark:text-gray-600 text-center" data-i18n="chat_tip">
         Tip: say things like "I want techy maker friends", "prefer English events", "no corporate vibes"
       </p>
     </div>
@@ -104,11 +107,12 @@
     <!-- Profile panel (appears after first profile extraction) -->
     <div id="profile-panel"
          class="hidden w-full lg:w-64 flex-shrink-0 bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700 p-4 self-start">
-      <h3 class="text-sm font-bold text-gray-800 dark:text-gray-100 mb-3">📋 Your Profile</h3>
+      <h3 class="text-sm font-bold text-gray-800 dark:text-gray-100 mb-3" data-i18n="profile_heading">📋 Your Profile</h3>
       <div id="profile-content" class="text-xs text-gray-600 dark:text-gray-400 space-y-2.5"></div>
       <div class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
         <button onclick="setView('communities')"
-                class="w-full text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline">
+                class="w-full text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline"
+                data-i18n="view_matches">
           View community matches →
         </button>
       </div>
@@ -120,32 +124,32 @@
 
     <!-- Filter / search bar -->
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700 p-3 mb-4 flex flex-wrap items-center gap-3">
-      <input id="comm-search" type="text" placeholder="Filter communities…"
+      <input id="comm-search" type="text" data-i18n-placeholder="filter_placeholder" placeholder="Filter communities…"
              class="flex-1 min-w-40 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
              oninput="filterCommunities()" />
       <select id="comm-sort" onchange="filterCommunities()"
               class="rounded-lg px-2 py-2 text-xs text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <option value="default">Sort: Default</option>
-        <option value="newest">Newest first</option>
-        <option value="oldest">Oldest first</option>
-        <option value="source">By source</option>
-        <option value="name">A → Z</option>
+        <option value="default" data-i18n="sort_default">Sort: Default</option>
+        <option value="newest" data-i18n="sort_newest">Newest first</option>
+        <option value="oldest" data-i18n="sort_oldest">Oldest first</option>
+        <option value="source" data-i18n="sort_source">By source</option>
+        <option value="name" data-i18n="sort_name">A → Z</option>
       </select>
       <label class="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none">
         <input id="free-only" type="checkbox" onchange="filterCommunities()" class="rounded" />
-        Free only
+        <span data-i18n="free_only">Free only</span>
       </label>
       <div id="tag-filter-bar" class="flex flex-wrap gap-1.5"></div>
-      <button onclick="clearCommFilters()" class="text-xs text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 underline">Clear</button>
+      <button onclick="clearCommFilters()" class="text-xs text-gray-400 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-300 underline" data-i18n="btn_clear">Clear</button>
       <span id="comm-count" class="text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full"></span>
       <span id="db-total" class="text-xs text-gray-400 dark:text-gray-600 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded-full" title="Total communities in database"></span>
       <button onclick="refreshCommunities()" id="refresh-comm-btn"
-              class="text-xs text-gray-400 dark:text-gray-600 hover:text-blue-600 dark:hover:text-blue-400 underline">Refresh results</button>
+              class="text-xs text-gray-400 dark:text-gray-600 hover:text-blue-600 dark:hover:text-blue-400 underline" data-i18n="btn_refresh">Refresh results</button>
     </div>
 
     <div id="comm-loading" class="hidden flex-col items-center py-20 gap-4">
       <div class="spinner"></div>
-      <p class="text-sm text-gray-400 dark:text-gray-500">Searching for communities…</p>
+      <p class="text-sm text-gray-400 dark:text-gray-500" data-i18n="searching_msg">Searching for communities…</p>
     </div>
 
     <div id="communities-grid" class="card-grid"></div>
@@ -160,10 +164,10 @@
 
     <div id="no-communities" class="hidden text-center py-20 text-gray-400 dark:text-gray-600">
       <p class="text-4xl mb-3">🔍</p>
-      <p class="font-medium">No communities found yet.</p>
+      <p class="font-medium" data-i18n="no_communities">No communities found yet.</p>
       <p class="text-sm mt-1">
-        Complete the chat profiling first, then come back here.
-        <button onclick="setView('chat')" class="text-blue-600 dark:text-blue-400 hover:underline ml-1">Back to chat →</button>
+        <span data-i18n="no_communities_hint">Complete the chat profiling first, then come back here.</span>
+        <button onclick="setView('chat')" class="text-blue-600 dark:text-blue-400 hover:underline ml-1" data-i18n="back_to_chat">Back to chat →</button>
       </p>
     </div>
   </div>
@@ -173,8 +177,8 @@
     <div id="saved-grid" class="card-grid"></div>
     <div id="saved-empty" class="hidden text-center py-20 text-gray-400 dark:text-gray-600">
       <p class="text-4xl mb-3">★</p>
-      <p class="font-medium">No saved communities yet.</p>
-      <p class="text-sm mt-1">Bookmark communities with the ★ button on any card.</p>
+      <p class="font-medium" data-i18n="no_saved">No saved communities yet.</p>
+      <p class="text-sm mt-1" data-i18n="no_saved_hint">Bookmark communities with the ★ button on any card.</p>
     </div>
   </div>
 
@@ -184,6 +188,156 @@
 // ═══════════════════════════════════════════════════════════
 // State
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// i18n
+// ═══════════════════════════════════════════════════════════
+const I18N = {
+  en: {
+    tagline:            'Find your people in Berlin',
+    phase_intake:       'Intake',
+    phase_profiling:    'Profiling',
+    phase_searching:    'Searching',
+    phase_results:      'Results',
+    btn_chat:           '💬 Chat',
+    btn_communities:    '🏘 Communities',
+    btn_saved:          '★ Saved',
+    btn_send:           'Send',
+    btn_clear:          'Clear',
+    btn_refresh:        'Refresh results',
+    chat_placeholder:   "Tell me what kind of community you're looking for…",
+    chat_tip:           'Tip: say things like "I want techy maker friends", "prefer English events", "no corporate vibes"',
+    profile_heading:    '📋 Your Profile',
+    view_matches:       'View community matches →',
+    filter_placeholder: 'Filter communities…',
+    sort_default:       'Sort: Default',
+    sort_newest:        'Newest first',
+    sort_oldest:        'Oldest first',
+    sort_source:        'By source',
+    sort_name:          'A → Z',
+    free_only:          'Free only',
+    searching_msg:      'Searching for communities…',
+    no_communities:     'No communities found yet.',
+    no_communities_hint:'Complete the chat profiling first, then come back here.',
+    back_to_chat:       'Back to chat →',
+    no_saved:           'No saved communities yet.',
+    no_saved_hint:      'Bookmark communities with the ★ button on any card.',
+    view_community:     'View community →',
+    free_label:         'FREE',
+    phase_listening:    'Listening…',
+    phase_building:     'Building your profile…',
+    phase_searching_status: 'Searching communities…',
+    phase_results_ready:'Results ready!',
+    phase_refining:     'Refining results…',
+    deep_search_msg:    '🔍 Doing a deeper live search — this might take a few minutes…',
+    in_db:              'in DB',
+    page_of:            'Page {0} of {1}',
+    shown_of:           '{0} of {1} shown',
+    communities_count:  '{0} {1}',
+    community_word:     'community',
+    communities_word:   'communities',
+    error_server:       'Could not reach the server. Is it running?',
+    error_communities:  'Could not load communities.',
+    profile_goals:      '🎯 Goals',
+    profile_interests:  '💡 Interests',
+    profile_social:     '👥 Social mode',
+    profile_env:        '🌱 Environment',
+    profile_lang:       '🌐 Language',
+    profile_districts:  '📍 Districts',
+    profile_budget:     '💰 Budget',
+    profile_dealbreakers:'🚫 Dealbreakers',
+    greeting:           "Hello! I'm your Community Matcher.\n\nTell me what kind of community you're looking for — things like your interests, whether you prefer workshops or social events, language, location in Berlin, or what you definitely want to avoid.\n\nI'll ask a few focused questions and then find groups, meetups, and events that fit your vibe.",
+  },
+  de: {
+    tagline:            'Finde deine Gemeinschaft in Berlin',
+    phase_intake:       'Anfang',
+    phase_profiling:    'Profil',
+    phase_searching:    'Suche',
+    phase_results:      'Ergebnisse',
+    btn_chat:           '💬 Chat',
+    btn_communities:    '🏘 Gruppen',
+    btn_saved:          '★ Gespeichert',
+    btn_send:           'Senden',
+    btn_clear:          'Löschen',
+    btn_refresh:        'Ergebnisse aktualisieren',
+    chat_placeholder:   'Was für eine Gemeinschaft suchst du?…',
+    chat_tip:           'Tipp: Sag Dinge wie „Ich suche Tech-Freunde", „lieber englischsprachige Events", „keine Corporate-Vibes"',
+    profile_heading:    '📋 Dein Profil',
+    view_matches:       'Community-Treffer anzeigen →',
+    filter_placeholder: 'Gruppen filtern…',
+    sort_default:       'Sortierung: Standard',
+    sort_newest:        'Neueste zuerst',
+    sort_oldest:        'Älteste zuerst',
+    sort_source:        'Nach Quelle',
+    sort_name:          'A → Z',
+    free_only:          'Nur kostenlos',
+    searching_msg:      'Suche nach Gruppen…',
+    no_communities:     'Noch keine Gruppen gefunden.',
+    no_communities_hint:'Bitte erst das Chat-Profil ausfüllen.',
+    back_to_chat:       'Zurück zum Chat →',
+    no_saved:           'Noch keine gespeicherten Gruppen.',
+    no_saved_hint:      'Gruppen mit dem ★-Button auf einer Karte speichern.',
+    view_community:     'Gruppe ansehen →',
+    free_label:         'KOSTENLOS',
+    phase_listening:    'Zuhören…',
+    phase_building:     'Profil wird erstellt…',
+    phase_searching_status: 'Suche läuft…',
+    phase_results_ready:'Ergebnisse bereit!',
+    phase_refining:     'Ergebnisse werden verfeinert…',
+    deep_search_msg:    '🔍 Tiefere Live-Suche läuft — das kann ein paar Minuten dauern…',
+    in_db:              'in DB',
+    page_of:            'Seite {0} von {1}',
+    shown_of:           '{0} von {1} angezeigt',
+    communities_count:  '{0} {1}',
+    community_word:     'Gruppe',
+    communities_word:   'Gruppen',
+    error_server:       'Server nicht erreichbar. Läuft er?',
+    error_communities:  'Gruppen konnten nicht geladen werden.',
+    profile_goals:      '🎯 Ziele',
+    profile_interests:  '💡 Interessen',
+    profile_social:     '👥 Soziale Präferenz',
+    profile_env:        '🌱 Umgebung',
+    profile_lang:       '🌐 Sprache',
+    profile_districts:  '📍 Bezirke',
+    profile_budget:     '💰 Budget',
+    profile_dealbreakers:'🚫 Ausschlusskriterien',
+    greeting:           'Hallo! Ich bin dein Community Matcher.\n\nErzähl mir, welche Art von Gemeinschaft du suchst — z. B. deine Interessen, ob du lieber Workshops oder gesellige Events magst, welche Sprache, welchen Bezirk in Berlin, oder was du unbedingt vermeiden möchtest.\n\nIch stelle dir ein paar gezielte Fragen und finde dann Gruppen, Meetups und Events, die zu dir passen.',
+  },
+};
+
+let currentLang = localStorage.getItem('cmLang') || 'en';
+
+function t(key) {
+  return (I18N[currentLang] || I18N.en)[key] || (I18N.en[key] || key);
+}
+
+function applyI18n() {
+  // Text nodes
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    const val = t(key);
+    if (val) el.textContent = val;
+  });
+  // Placeholder attributes
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    const val = t(key);
+    if (val) el.placeholder = val;
+  });
+  // Lang toggle button label
+  const lt = document.getElementById('lang-toggle');
+  if (lt) lt.textContent = currentLang === 'en' ? 'DE' : 'EN';
+}
+
+function toggleLang() {
+  currentLang = currentLang === 'en' ? 'de' : 'en';
+  localStorage.setItem('cmLang', currentLang);
+  applyI18n();
+  // Re-render cards in the new language
+  if (allCommunities.length) {
+    filterCommunities();
+  }
+}
+
 let sessionId = localStorage.getItem('cmSessionId') || (() => {
   const id = 'cm_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
   localStorage.setItem('cmSessionId', id);
@@ -205,6 +359,9 @@ const SOURCE_STYLE = {
   meetup:     'bg-purple-100 text-purple-800',
   eventbrite: 'bg-orange-100 text-orange-800',
   luma:       'bg-teal-100 text-teal-800',
+  mobilize:   'bg-rose-100 text-rose-800',
+  ical:       'bg-indigo-100 text-indigo-800',
+  github:     'bg-gray-100 text-gray-800',
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -228,14 +385,16 @@ function setView(view) {
 // ═══════════════════════════════════════════════════════════
 // Phase indicator
 // ═══════════════════════════════════════════════════════════
-const PHASE_LABELS = {
-  intake:        'Listening…',
-  questioning:   'Building your profile…',
-  searching:     'Searching communities…',
-  aggregating:   'Searching communities…',
-  recommending:  'Results ready!',
-  refining:      'Refining results…',
-};
+function getPhaseLabels() {
+  return {
+    intake:       t('phase_listening'),
+    questioning:  t('phase_building'),
+    searching:    t('phase_searching_status'),
+    aggregating:  t('phase_searching_status'),
+    recommending: t('phase_results_ready'),
+    refining:     t('phase_refining'),
+  };
+}
 
 const PHASE_STEPS = ['intake','questioning','searching','recommending'];
 
@@ -250,7 +409,7 @@ function updatePhaseUI(phase) {
     el.className = 'phase-step ' + (i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'upcoming');
   });
 
-  document.getElementById('status-line').textContent = PHASE_LABELS[phase] || phase;
+  document.getElementById('status-line').textContent = getPhaseLabels()[phase] || phase;
 
   // Auto-switch to Communities view when recommendations are ready
   if (phase === 'recommending' && currentView === 'chat') {
@@ -306,7 +465,7 @@ async function sendMessage() {
     deepSearchTimer = setTimeout(() => {
       const ind = document.getElementById('typing-indicator');
       if (ind) ind.innerHTML =
-        '<span style="font-size:.8rem;color:#64748b">🔍 Doing a deeper live search — this might take a few minutes…</span>';
+        `<span style="font-size:.8rem;color:#64748b">${t('deep_search_msg')}</span>`;
     }, 4000);
   }
 
@@ -332,7 +491,7 @@ async function sendMessage() {
   } catch(err) {
     if (deepSearchTimer) clearTimeout(deepSearchTimer);
     hideTyping();
-    showError('Could not reach the server. Is it running?');
+    showError(t('error_server'));
     console.error(err);
   } finally {
     btn.disabled   = false;
@@ -351,21 +510,21 @@ function renderProfilePanel(profile) {
   const rows    = [];
 
   if (profile.goals?.length)
-    rows.push(profileRow('🎯 Goals', profile.goals));
+    rows.push(profileRow(t('profile_goals'), profile.goals));
   if (profile.interests?.length)
-    rows.push(profileRow('💡 Interests', profile.interests));
+    rows.push(profileRow(t('profile_interests'), profile.interests));
   if (profile.social_mode)
-    rows.push(profileRow('👥 Social mode', [profile.social_mode.replace(/_/g,' ')]));
+    rows.push(profileRow(t('profile_social'), [profile.social_mode.replace(/_/g,' ')]));
   if (profile.environment)
-    rows.push(profileRow('🌱 Environment', [profile.environment.replace(/_/g,' ')]));
+    rows.push(profileRow(t('profile_env'), [profile.environment.replace(/_/g,' ')]));
   if (profile.language_pref?.length)
-    rows.push(profileRow('🌐 Language', profile.language_pref));
+    rows.push(profileRow(t('profile_lang'), profile.language_pref));
   if (profile.logistics?.districts?.length)
-    rows.push(profileRow('📍 Districts', profile.logistics.districts));
+    rows.push(profileRow(t('profile_districts'), profile.logistics.districts));
   if (profile.budget && profile.budget !== 'any')
-    rows.push(profileRow('💰 Budget', [profile.budget.replace(/_/g,' ')]));
+    rows.push(profileRow(t('profile_budget'), [profile.budget.replace(/_/g,' ')]));
   if (profile.dealbreakers?.length)
-    rows.push(profileRow('🚫 Dealbreakers', profile.dealbreakers));
+    rows.push(profileRow(t('profile_dealbreakers'), profile.dealbreakers));
 
   if (!rows.length) return;
   content.innerHTML = rows.join('');
@@ -410,7 +569,7 @@ async function loadCommunities(force) {
     buildCommTagPills();
     renderCommunityGrid(allCommunities);
   } catch(err) {
-    showError('Could not load communities.');
+    showError(t('error_communities'));
     console.error(err);
   } finally {
     loading.classList.add('hidden');
@@ -512,7 +671,7 @@ function updateDbTotalEl() {
   const el = document.getElementById('db-total');
   if (!el) return;
   if (dbTotal === null) { el.textContent = ''; return; }
-  el.textContent = `${dbTotal.toLocaleString()} in DB`;
+  el.textContent = `${dbTotal.toLocaleString()} ${t('in_db')}`;
 }
 
 function renderCommunityGrid(communities) {
@@ -533,9 +692,9 @@ function _renderPage() {
 
   const isFiltered = document.getElementById('comm-search').value.trim() || activeTagFilters.size || document.getElementById('free-only').checked;
   if (isFiltered) {
-    countEl.textContent = `${total} of ${allCommunities.length} shown`;
+    countEl.textContent = t('shown_of').replace('{0}', total).replace('{1}', allCommunities.length);
   } else {
-    countEl.textContent = `${total} ${total===1?'community':'communities'}`;
+    countEl.textContent = `${total} ${total===1 ? t('community_word') : t('communities_word')}`;
   }
 
   if (!total) {
@@ -549,7 +708,7 @@ function _renderPage() {
 
   if (pages > 1) {
     pagDiv.classList.remove('hidden');
-    document.getElementById('page-info').textContent = `Page ${currentPage + 1} of ${pages}`;
+    document.getElementById('page-info').textContent = t('page_of').replace('{0}', currentPage + 1).replace('{1}', pages);
     document.getElementById('page-prev').disabled = currentPage === 0;
     document.getElementById('page-next').disabled = currentPage >= pages - 1;
   } else {
@@ -566,14 +725,21 @@ function changePage(delta) {
 
 function renderCommunityCard(c) {
   const rawId  = c.id != null ? String(c.id) : (c.source_url || c.canonical_url || (c.title||c.name||'') + String(Math.random()));
-  const name   = esc(c.title || c.name || 'Unknown');
+  // Pick language-appropriate title and description
+  const titleField = currentLang === 'de'
+    ? (c.title_de || c.title || c.name || 'Unknown')
+    : (c.title_en || c.title || c.name || 'Unknown');
+  const descField = currentLang === 'de'
+    ? (c.description_de || c.description || '')
+    : (c.description_en || c.description || '');
+  const name   = esc(titleField);
   const src    = (c.source||'').toLowerCase();
   const badge  = SOURCE_STYLE[src] || 'bg-gray-100 text-gray-700';
   const catVal = c.category || c.event_type;
   const catBadge = catVal
     ? `<span class="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full">${esc(catVal)}</span>` : '';
-  const desc   = c.description
-    ? `<p class="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">${esc(stripHtml(c.description))}</p>` : '';
+  const desc   = descField
+    ? `<p class="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">${esc(stripHtml(descField))}</p>` : '';
   const dtRaw  = c.event_datetime || c.start_date || c.date;
   const dateBadge = dtRaw ? fmtEventDate(dtRaw) : '';
   const locVal = c.location || c.location_city;
@@ -583,13 +749,13 @@ function renderCommunityCard(c) {
   const recurrence = recVal
     ? `<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">🔄 ${esc(recVal)}</p>` : '';
   const isFree = c.is_free
-    ? `<span class="text-xs bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-full">FREE</span>` : '';
+    ? `<span class="text-xs bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-full">${t('free_label')}</span>` : '';
   const tags   = parseTags(c.tags || c.topic_signals).slice(0, 8)
     .map(t => `<span class="tag-pill">${esc(t)}</span>`).join(' ');
   const url    = c.source_url || c.canonical_url || c.url || '';
   const link   = url
     ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer"
-           class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline mt-1 self-start">View community →</a>`
+           class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline mt-1 self-start">${t('view_community')}</a>`
     : '';
   const saved     = bookmarkedIds.has(rawId);
   const starStyle = saved ? 'color:#eab308' : 'color:#d1d5db';
@@ -665,7 +831,8 @@ function fmtEventDate(raw) {
     const now = new Date();
     const isPast = d < now;
     const opts = { weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' };
-    const label = d.toLocaleDateString('en-GB', opts);
+    const locale = currentLang === 'de' ? 'de-DE' : 'en-GB';
+    const label = d.toLocaleDateString(locale, opts);
     const colorClass = isPast
       ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
       : 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800';
@@ -708,14 +875,9 @@ function toggleDark() {
 // ═══════════════════════════════════════════════════════════
 // Boot
 // ═══════════════════════════════════════════════════════════
+applyI18n();
 loadDbStats();
-appendMessage('assistant',
-  'Hello! I\'m your Community Matcher.\n\n' +
-  'Tell me what kind of community you\'re looking for — things like your interests, ' +
-  'whether you prefer workshops or social events, language, location in Berlin, or ' +
-  'what you definitely want to avoid.\n\n' +
-  'I\'ll ask a few focused questions and then find groups, meetups, and events that fit your vibe.'
-);
+appendMessage('assistant', t('greeting'));
 
 // Restore session if it has prior history
 (async () => {

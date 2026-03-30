@@ -31,6 +31,11 @@ TABLE scrape_record              -- rich per-record data from the collector (mos
   is_online             INTEGER  -- 0 = in-person, 1 = online
   cost_text             TEXT
   cost_factor           REAL
+  title_en              TEXT     -- English title (original or translated)
+  description_en        TEXT     -- English description
+  title_de              TEXT     -- German title (original or translated)
+  description_de        TEXT     -- German description
+  detected_language     TEXT     -- "en" or "de" (auto-detected source language)
   tags                  TEXT     -- JSON array of all tags, e.g. '["ai","tech","workshop"]'
   topic_signals         TEXT     -- JSON array, e.g. '["ai","python","startup"]'
   audience_signals      TEXT     -- JSON array, e.g. '["beginner_friendly","english_friendly"]'

@@ -15,6 +15,7 @@ dependencies = [
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.29.0",
     "apscheduler>=3.10.0",
+    "icalendar>=6.0.0",
 ]
 
 [project.optional-dependencies]

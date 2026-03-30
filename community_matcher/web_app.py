@@ -92,6 +92,7 @@ _SCHEDULER_TERMS_B = [
     "maker hackspace Berlin", "gaming community Berlin", "design community Berlin",
     "social coding Berlin", "newcomer Berlin community", "cybersecurity Berlin",
 ]
+_SCHEDULER_SOURCES = ["meetup", "luma", "mobilize", "ical", "github"]
 
 
 def _run_scheduled_collection() -> None:
@@ -110,7 +111,7 @@ def _run_scheduled_collection() -> None:
         terms = _SCHEDULER_TERMS_A if day_parity == 0 else _SCHEDULER_TERMS_B
         cfg = CollectorConfig(
             search_terms=terms,
-            sources_to_run=["meetup", "luma"],
+            sources_to_run=_SCHEDULER_SOURCES,
             max_results_per_source=50,
             headless=True,
         )
@@ -126,6 +127,14 @@ _scheduler.add_job(_run_scheduled_collection, "cron", hour=3, minute=0, id="nigh
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Ensure translation columns exist in the DB (idempotent migration)
+    try:
+        from community_collector.persistence import init_db
+        from community_matcher.config.settings import settings
+        init_db(settings.sqlite_db_path)
+    except Exception as exc:
+        log.warning("startup.db_migration_failed", error=str(exc))
+
     _scheduler.start()
     log.info("scheduler.started", jobs=[j.id for j in _scheduler.get_jobs()])
     yield
@@ -271,6 +280,56 @@ async def db_stats() -> dict:
     except Exception:
         total = 0
     return {"total": total}
+
+
+# ── Translation backfill ──────────────────────────────────────────────────────
+
+@app.post("/admin/backfill-translations")
+async def backfill_translations(limit: int = 50) -> dict:
+    """
+    Translate existing scrape_record rows that have no title_en / title_de yet.
+    Processes up to `limit` rows per call (default 50) to avoid timeouts.
+    Safe to call repeatedly — skips already-translated rows.
+    """
+    from community_matcher.db.connection import execute_query, _execute_sqlite, _sqlite_default
+    import sqlite3
+
+    db_path = str(_sqlite_default())
+    rows = execute_query(
+        "SELECT id, title, description FROM scrape_record "
+        "WHERE title_en IS NULL OR title_de IS NULL "
+        f"LIMIT {min(limit, 200)}"
+    )
+    if not rows:
+        return {"translated": 0, "message": "All rows already have translations."}
+
+    from community_collector.translation import fill_translations
+    updated = 0
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.cursor()
+        for row in rows:
+            try:
+                trans = fill_translations(row["title"], row.get("description"))
+                cur.execute(
+                    """UPDATE scrape_record
+                       SET title_en=?, description_en=?, title_de=?, description_de=?, detected_language=?
+                       WHERE id=?""",
+                    (
+                        trans["title_en"], trans["description_en"],
+                        trans["title_de"], trans["description_de"],
+                        trans["detected_language"],
+                        row["id"],
+                    ),
+                )
+                updated += 1
+            except Exception as exc:
+                log.warning("backfill.row_failed", row_id=row["id"], error=str(exc))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"translated": updated, "remaining": max(0, len(rows) - updated)}
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

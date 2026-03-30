@@ -42,7 +42,7 @@ Rules:
 - For tag searches use LIKE '%"tagname"%' since tags are stored as JSON arrays in TEXT columns.
 - ALWAYS use OR (never AND) when combining multiple topic/tag conditions — AND returns too few results.
 - Prefer scrape_record for rich data (title, description, tags, source_url).
-- ALWAYS include these columns in every SELECT from scrape_record: source, source_url, title, tags.
+- ALWAYS include these columns in every SELECT from scrape_record: source, source_url, title, description, tags, title_en, description_en, title_de, description_de, detected_language.
 - Only filter on column names and tag values that exist in the schema above.
 - Do NOT invent tag values — only use tags listed in the schema (ai, python, startup, tech, etc.).
 - Output only the raw SQL statement on a single line.

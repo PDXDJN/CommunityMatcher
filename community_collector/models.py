@@ -44,6 +44,13 @@ class CommunityEventRecord(BaseModel):
     format_signals: list[str] = Field(default_factory=list)
     vibe_signals: list[str] = Field(default_factory=list)
 
+    # --- Translations ---
+    title_en: Optional[str] = None          # English title (original or translated)
+    description_en: Optional[str] = None    # English description
+    title_de: Optional[str] = None          # German title (original or translated)
+    description_de: Optional[str] = None    # German description
+    detected_language: Optional[str] = None # "en" | "de" — auto-detected source language
+
     # --- Classification ---
     raw_category: Optional[str] = None
     language: Optional[str] = None
