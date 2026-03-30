@@ -100,6 +100,8 @@ def _run_scheduled_collection() -> None:
 
     Alternates between two term batches each night so the full archetype
     vocabulary is covered every two days without making each run too slow.
+    After collection, runs the community rollup to aggregate events into
+    organizer-level community rows.
     """
     import datetime
     try:
@@ -119,6 +121,22 @@ def _run_scheduled_collection() -> None:
         log.info("scheduler.collection_done", terms=terms)
     except Exception as exc:
         log.warning("scheduler.collection_failed", error=str(exc))
+        return  # Skip rollup if collection failed hard
+
+    # Post-collection rollup: collapse events → organizer-level communities
+    try:
+        from community_matcher.config.settings import settings
+        from rollup_communities import rollup
+        log.info("scheduler.rollup_start")
+        stats = rollup(settings.sqlite_db_path, source_filter=None, dry_run=False)
+        log.info(
+            "scheduler.rollup_done",
+            communities_created=stats.get("communities_created", 0),
+            communities_updated=stats.get("communities_updated", 0),
+            records_relinked=stats.get("records_relinked", 0),
+        )
+    except Exception as exc:
+        log.warning("scheduler.rollup_failed", error=str(exc))
 
 
 _scheduler = BackgroundScheduler(timezone="Europe/Berlin")
@@ -221,6 +239,18 @@ async def get_profile(session_id: str) -> dict:
         "profile": state.profile.model_dump(),
         "conversation_history": state.conversation_history,
     }
+
+
+# ── Ranked results ───────────────────────────────────────────────────────────
+
+@app.get("/session/{session_id}/ranked")
+async def get_ranked(session_id: str) -> dict:
+    """
+    Return the last ranked community rows for the session (with _scores).
+    Only available after at least one search has completed.
+    """
+    _, state = _get_or_create_session(session_id)
+    return {"ranked": state.last_ranked_rows or []}
 
 
 # ── Communities ───────────────────────────────────────────────────────────────

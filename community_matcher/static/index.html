@@ -188,6 +188,8 @@
 // ═══════════════════════════════════════════════════════════
 // State
 // ═══════════════════════════════════════════════════════════
+let rankedById = {};   // source_url → _scores, loaded after recommendations
+
 // ═══════════════════════════════════════════════════════════
 // i18n
 // ═══════════════════════════════════════════════════════════
@@ -487,6 +489,7 @@ async function sendMessage() {
     // Invalidate community cache so next visit re-fetches
     if (data.phase === 'recommending' || data.phase === 'refining') {
       _commCacheValid = false;
+      loadRankedResults();
     }
   } catch(err) {
     if (deepSearchTimer) clearTimeout(deepSearchTimer);
@@ -501,39 +504,92 @@ async function sendMessage() {
 }
 
 // ═══════════════════════════════════════════════════════════
+// Ranked results (match scores)
+// ═══════════════════════════════════════════════════════════
+async function loadRankedResults() {
+  try {
+    const res = await fetch(`/session/${encodeURIComponent(sessionId)}/ranked`);
+    if (!res.ok) return;
+    const data = await res.json();
+    rankedById = {};
+    (data.ranked || []).forEach(r => {
+      const key = r.source_url || r.canonical_url;
+      if (key) rankedById[key] = r._scores || null;
+    });
+    // Re-render communities grid with scores if it's already visible
+    if (currentView === 'communities' && allCommunities.length) filterCommunities();
+  } catch(e) { /* non-fatal */ }
+}
+
+function matchScoreBadge(c) {
+  const key = c.source_url || c.canonical_url;
+  const scores = key ? rankedById[key] : null;
+  if (!scores || scores.total == null) return '';
+  const pct = Math.round(scores.total * 100);
+  const color = pct >= 70 ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+              : pct >= 45 ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-100 dark:border-blue-800'
+              :              'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600';
+  const topDim = _topScoreDim(scores);
+  const tip = topDim ? ` title="Best: ${topDim}"` : '';
+  return `<span class="text-xs font-bold px-2 py-0.5 rounded-full border ${color} cursor-default"${tip}>★ ${pct}%</span>`;
+}
+
+function _topScoreDim(scores) {
+  const dims = ['interest_alignment','vibe_alignment','newcomer_friendliness','language_fit','values_fit'];
+  let best = null, bestVal = -1;
+  dims.forEach(d => { if ((scores[d] || 0) > bestVal) { bestVal = scores[d]; best = d; } });
+  return best ? best.replace(/_/g,' ') : null;
+}
+
+// ═══════════════════════════════════════════════════════════
 // Profile panel
 // ═══════════════════════════════════════════════════════════
 function renderProfilePanel(profile) {
   if (!profile) return;
   const content = document.getElementById('profile-content');
   const panel   = document.getElementById('profile-panel');
+  const conf    = profile.field_confidence || {};
   const rows    = [];
 
   if (profile.goals?.length)
-    rows.push(profileRow(t('profile_goals'), profile.goals));
+    rows.push(profileRow(t('profile_goals'), profile.goals, conf.goals));
   if (profile.interests?.length)
-    rows.push(profileRow(t('profile_interests'), profile.interests));
+    rows.push(profileRow(t('profile_interests'), profile.interests, conf.interests));
   if (profile.social_mode)
-    rows.push(profileRow(t('profile_social'), [profile.social_mode.replace(/_/g,' ')]));
+    rows.push(profileRow(t('profile_social'), [profile.social_mode.replace(/_/g,' ')], conf.social_mode));
   if (profile.environment)
-    rows.push(profileRow(t('profile_env'), [profile.environment.replace(/_/g,' ')]));
+    rows.push(profileRow(t('profile_env'), [profile.environment.replace(/_/g,' ')], conf.environment));
   if (profile.language_pref?.length)
-    rows.push(profileRow(t('profile_lang'), profile.language_pref));
+    rows.push(profileRow(t('profile_lang'), profile.language_pref, conf.language_pref));
   if (profile.logistics?.districts?.length)
-    rows.push(profileRow(t('profile_districts'), profile.logistics.districts));
+    rows.push(profileRow(t('profile_districts'), profile.logistics.districts, conf.logistics));
   if (profile.budget && profile.budget !== 'any')
-    rows.push(profileRow(t('profile_budget'), [profile.budget.replace(/_/g,' ')]));
+    rows.push(profileRow(t('profile_budget'), [profile.budget.replace(/_/g,' ')], conf.budget));
   if (profile.dealbreakers?.length)
-    rows.push(profileRow(t('profile_dealbreakers'), profile.dealbreakers));
+    rows.push(profileRow(t('profile_dealbreakers'), profile.dealbreakers, conf.dealbreakers, true));
 
   if (!rows.length) return;
   content.innerHTML = rows.join('');
   panel.classList.remove('hidden');
 }
 
-function profileRow(label, items) {
+// confidence → chip color classes
+function _chipClass(confidence, isDealbreaker) {
+  if (isDealbreaker)
+    return 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800';
+  if (confidence === 'explicit')
+    return 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800';
+  if (confidence === 'inferred_high')
+    return 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800';
+  // inferred_low or unknown
+  return 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600';
+}
+
+function profileRow(label, items, confidence, isDealbreaker) {
+  const chipCls = _chipClass(confidence, isDealbreaker);
+  const confTip = confidence ? ` title="${confidence.replace(/_/g,' ')}"` : '';
   const chips = items.map(i =>
-    `<span class="inline-block bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-full px-2 py-0.5 mr-1 mb-1">${esc(i)}</span>`
+    `<span class="inline-block ${chipCls} rounded-full px-2 py-0.5 mr-1 mb-1 text-xs cursor-default"${confTip}>${esc(i)}</span>`
   ).join('');
   return `<div>
     <div class="font-semibold text-gray-500 dark:text-gray-400 mb-0.5">${label}</div>
@@ -772,7 +828,7 @@ function renderCommunityCard(c) {
         <h3 class="font-semibold text-gray-900 dark:text-gray-100 text-sm leading-snug">${name}</h3>
         ${dateBadge}${location}${recurrence}${desc}
         <div class="flex flex-wrap gap-1 items-center mt-auto pt-2">
-          ${isFree}${catBadge}${tags}
+          ${matchScoreBadge(c)}${isFree}${catBadge}${tags}
         </div>
         ${link}
       </div>

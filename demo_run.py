@@ -70,6 +70,26 @@ PERSONAS: list[Persona] = [
             "These look too techy. I want something more casual.",
         ],
     ),
+    Persona(
+        name="English-Speaking Professional",
+        description="Expat newcomer, networking focus, startup scene, English only",
+        turns=[
+            "I just relocated to Berlin for work and want to build a professional network.",
+            "I'm in the startup space — product management. English-speaking events only.",
+            "I'm in Prenzlauer Berg. Weekday evenings or Saturday mornings work.",
+            "Find me something.",
+        ],
+    ),
+    Persona(
+        name="Queer Inclusive Creative",
+        description="LGBTQ+-friendly environment, design/art interests, inclusive vibe",
+        turns=[
+            "I'm looking for a queer-friendly community in Berlin. I'm into design and digital art.",
+            "I want inclusive, welcoming spaces — not cliquey or alcohol-centric.",
+            "English is fine, some German is OK. I'm in Kreuzberg.",
+            "Go ahead and search.",
+        ],
+    ),
 ]
 
 
@@ -138,12 +158,67 @@ def run_persona(persona: Persona, max_turns: int | None = None) -> dict:
     if state.last_ranked_rows:
         print(f"  Last ranked DB rows: {len(state.last_ranked_rows)}")
 
+    # ── Quality assertions ─────────────────────────────────────────────────
+    assertions: list[dict] = []
+
+    # 1. Phase must have advanced past QUESTIONING
+    phase_ok = state.phase.value not in ("intake", "questioning")
+    assertions.append({
+        "name": "reached_search_phase",
+        "pass": phase_ok,
+        "detail": f"ended in phase={state.phase.value}",
+    })
+
+    # 2. At least one goal or interest extracted
+    profile_populated = bool(profile_dict.get("goals") or profile_dict.get("interests"))
+    assertions.append({
+        "name": "profile_populated",
+        "pass": profile_populated,
+        "detail": f"goals={profile_dict.get('goals')}, interests={profile_dict.get('interests')}",
+    })
+
+    # 3. If we reached recommending, last_ranked_rows should be non-empty or chat had results
+    if state.phase.value in ("recommending", "refining"):
+        has_results = bool(state.last_ranked_rows) or any(
+            "No communities found" not in (r.get("content", "") or "")
+            for r in state.conversation_history
+            if r["role"] == "assistant"
+        )
+        assertions.append({
+            "name": "results_returned",
+            "pass": has_results,
+            "detail": f"last_ranked_rows={len(state.last_ranked_rows)}",
+        })
+
+    # 4. No error turns (assistant replied with [search failed:] or [orchestrator])
+    bad_responses = [
+        r["content"] for r in state.conversation_history
+        if r["role"] == "assistant" and (
+            r["content"].startswith("[search failed")
+            or r["content"].startswith("[orchestrator]")
+        )
+    ]
+    assertions.append({
+        "name": "no_error_responses",
+        "pass": not bad_responses,
+        "detail": f"{len(bad_responses)} error response(s)" if bad_responses else "clean",
+    })
+
+    failed_assertions = [a for a in assertions if not a["pass"]]
+    if failed_assertions:
+        print(f"\n--- Quality assertions: {len(assertions) - len(failed_assertions)}/{len(assertions)} passed ---")
+        for a in failed_assertions:
+            print(f"  FAIL [{a['name']}]: {a['detail']}")
+    else:
+        print(f"\n--- Quality assertions: all {len(assertions)} passed ✓ ---")
+
     summary = {
         "persona": persona.name,
         "turns_run": len(turns),
         "errors": errors,
         "final_phase": state.phase.value,
         "candidates": len(state.candidates),
+        "assertions_failed": len(failed_assertions),
         "profile": {
             k: v for k, v in profile_dict.items()
             if v and k not in ("field_confidence", "logistics", "archetype_weights")
@@ -170,12 +245,19 @@ def main() -> None:
     print("DEMO SUMMARY")
     print('=' * 70)
     for s in all_summaries:
-        status = "PASS" if not s["errors"] else f"FAIL ({len(s['errors'])} error(s))"
-        print(f"  {s['persona']:<30} phase={s['final_phase']:<15} candidates={s['candidates']:<5} {status}")
+        failed_assert = s.get("assertions_failed", 0)
+        runtime_errors = len(s["errors"])
+        if runtime_errors > 0:
+            status = f"FAIL ({runtime_errors} runtime error(s))"
+        elif failed_assert > 0:
+            status = f"WARN ({failed_assert} assertion(s) failed)"
+        else:
+            status = "PASS"
+        print(f"  {s['persona']:<35} phase={s['final_phase']:<15} candidates={s['candidates']:<5} {status}")
         for e in s["errors"]:
             print(f"    error: {e}")
 
-    has_errors = any(s["errors"] for s in all_summaries)
+    has_errors = any(s["errors"] or s.get("assertions_failed", 0) for s in all_summaries)
     print()
     if has_errors:
         print("Some runs had errors — see above.")

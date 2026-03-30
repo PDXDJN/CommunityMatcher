@@ -60,11 +60,11 @@ def _enrich(fields: dict) -> dict:
         dt = parse_datetime(raw_dt.get(raw_key) or raw_dt.get("datetime"))
         fields[dt_field] = dt.isoformat() if dt else raw_dt.get(raw_key)
 
-    # Language detection (fast, heuristic — no API call)
-    # Full LLM translation is deferred to the backfill endpoint to avoid
-    # blocking bulk collection runs.
+    # Inline translation: enabled by default; set CM_TRANSLATE_INLINE=false
+    # to skip (useful for bulk collection runs where speed matters more than
+    # having both language columns populated immediately).
     import os
-    _do_translate = os.getenv("CM_TRANSLATE_INLINE", "false").lower() == "true"
+    _do_translate = os.getenv("CM_TRANSLATE_INLINE", "true").lower() == "true"
     if _do_translate:
         translations = fill_translations(fields.get("title"), fields.get("description"))
         fields.update(translations)

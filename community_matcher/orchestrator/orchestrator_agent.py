@@ -15,7 +15,7 @@ from community_matcher.agents.archetype_agent import archetype_tool
 from community_matcher.agents.search_planner_agent import search_planner_tool
 from community_matcher.agents.ranking_agent import ranking_tool
 from community_matcher.agents.recommendation_writer_agent import recommendation_writer_tool
-from community_matcher.agents.txt2sql_agent import txt2sql_tool
+from community_matcher.agents.txt2sql_agent import txt2sql_tool, tag_search
 from community_matcher.agents.vibe_classifier_agent import vibe_classifier_tool
 from community_matcher.agents.risk_sanity_agent import risk_sanity_tool
 
@@ -469,7 +469,12 @@ def _run_search_pipeline(state: SessionState) -> str:
     else:
         search_query = _build_search_query(state)
 
-    log.info("orchestrator.search_query", query=search_query)
+    log.info(
+        "orchestrator.search_query",
+        query=search_query,
+        query_intents=query_intents[:3] if query_intents else [],
+        top_archetypes=sorted(archetype_weights.items(), key=lambda x: -x[1])[:3] if archetype_weights else [],
+    )
 
     # Step 2: txt2sql → raw rows
     raw_json = _agent_call("txt2sql_tool", txt2sql_tool, search_query)
@@ -484,14 +489,20 @@ def _run_search_pipeline(state: SessionState) -> str:
     if not isinstance(rows, list):
         rows = []
 
-    log.info("orchestrator.rows_fetched", row_count=len(rows))
+    stale = _rows_are_stale(rows)
+    log.info(
+        "orchestrator.rows_fetched",
+        row_count=len(rows),
+        stale=stale,
+        sources=list({r.get("source") for r in rows if r.get("source")}),
+    )
 
     # Step 2b: Live-search fallback — no results OR only past one-off events
     live_preamble = ""
     live_search_done = False
-    needs_live = len(rows) == 0 or _rows_are_stale(rows)
+    needs_live = len(rows) == 0 or stale
     if needs_live:
-        if _rows_are_stale(rows):
+        if stale:
             log.info("orchestrator.stale_results", row_count=len(rows))
         live_preamble = _run_live_collection(state, query_intents=query_intents) or ""
         live_search_done = bool(live_preamble)
@@ -505,6 +516,36 @@ def _run_search_pipeline(state: SessionState) -> str:
                     log.info("orchestrator.rows_fetched_after_live", row_count=len(rows))
             except Exception:
                 pass
+
+    if not rows:
+        # Tag-based fallback: bypass LLM entirely and query signal columns directly
+        profile = state.profile
+        topic_tags = [t for t in profile.interests if t in _VALID_DB_TAGS]
+        if not topic_tags:
+            topic_tags = ["tech"]
+        audience_tags = []
+        if profile.environment == "newcomer_friendly":
+            audience_tags = ["beginner_friendly", "newcomer_city"]
+        if "english" in (profile.language_pref or []):
+            audience_tags.append("english_friendly")
+        format_tags = [profile.social_mode] if profile.social_mode in _VALID_DB_TAGS else []
+        free_only = profile.budget == "free_only"
+
+        log.info(
+            "orchestrator.tag_search_fallback",
+            reason="txt2sql_empty_after_live_search" if live_search_done else "txt2sql_empty",
+            topic_tags=topic_tags,
+            audience_tags=audience_tags,
+            format_tags=format_tags,
+            free_only=free_only,
+        )
+        rows = tag_search(
+            topic_tags,
+            audience_tags=audience_tags or None,
+            format_tags=format_tags or None,
+            free_only=free_only,
+            limit=30,
+        )
 
     if not rows:
         searched = ", ".join(query_intents[:3]) if query_intents else search_query[:80]
@@ -645,7 +686,19 @@ class OrchestratorAgent:
         self._question_turns += 1
         sufficiency = check_sufficiency(self.state.profile)
 
+        log.info(
+            "orchestrator.sufficiency_check",
+            score=round(sufficiency.score, 3),
+            is_sufficient=sufficiency.is_sufficient,
+            missing=sufficiency.missing_categories,
+            question_turn=self._question_turns,
+            goals=self.state.profile.goals,
+            interests=self.state.profile.interests,
+        )
+
         if sufficiency.is_sufficient or self._question_turns >= self._MAX_QUESTION_TURNS:
+            reason = "sufficient" if sufficiency.is_sufficient else "turn_cap_reached"
+            log.info("orchestrator.moving_to_search", reason=reason, score=round(sufficiency.score, 3))
             self.state.advance_phase(OrchestratorPhase.SEARCHING)
             return self._handle_searching()
 
@@ -655,6 +708,7 @@ class OrchestratorAgent:
             questions_json = _agent_call("question_planner_tool", question_planner_tool, profile_json)
             questions = json.loads(questions_json)
             if questions:
+                log.info("orchestrator.questions_selected", source="llm", count=len(questions))
                 return "\n".join(f"- {q}" for q in questions)
         except Exception as exc:
             log.warning("orchestrator.question_planner_fallback", error=str(exc))
@@ -668,6 +722,7 @@ class OrchestratorAgent:
         if not questions:
             self.state.advance_phase(OrchestratorPhase.SEARCHING)
             return self._handle_searching()
+        log.info("orchestrator.questions_selected", source="static_bank", count=len(questions))
         return "\n".join(f"- {q}" for q in questions)
 
     def _handle_searching(self) -> str:
@@ -699,10 +754,19 @@ class OrchestratorAgent:
         # Also run normal profile enrichment (picks up new interests/goals)
         _enrich_profile_from_turn(last_input, self.state.profile)
 
+        wants_search = _wants_research(last_input)
+        log.info(
+            "orchestrator.refining",
+            feedback_changed=feedback_changed,
+            wants_new_search=wants_search,
+            has_cached_rows=bool(self.state.last_ranked_rows),
+            dealbreakers=self.state.profile.dealbreakers,
+        )
+
         # Decide: re-rank cached results or do a full new search?
         if (
             feedback_changed
-            and not _wants_research(last_input)
+            and not wants_search
             and self.state.last_ranked_rows
         ):
             # Feedback-only refinement — re-rank existing results, no new DB query
