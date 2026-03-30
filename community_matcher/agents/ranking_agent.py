@@ -212,6 +212,14 @@ def ranking_tool(candidates_json: str, profile_json: str) -> str:
         scored = [_score_candidate(c, profile) for c in safe]
         scored.sort(key=lambda c: c["_scores"]["total"], reverse=True)
 
+        # Drop results with zero interest alignment when the profile has explicit
+        # interests — this prevents completely off-topic results from surfacing.
+        interests = profile.get("interests", [])
+        if interests:
+            relevant = [c for c in scored if c["_scores"]["interest_alignment"] > 0.1]
+            if relevant:  # only apply the filter if it leaves at least one result
+                scored = relevant
+
         log.info("ranking.done", total=len(candidates), kept=len(safe), scored=len(scored))
         return json.dumps(scored)
     except Exception as exc:

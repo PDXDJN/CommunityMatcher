@@ -85,6 +85,8 @@ CREATE TABLE IF NOT EXISTS scrape_record (
     city                 TEXT,
     country              TEXT,
     is_online            INTEGER,    -- 0/1/NULL
+    latitude             REAL,
+    longitude            REAL,
     cost_text            TEXT,
     cost_factor          REAL,
     currency             TEXT,
@@ -156,6 +158,8 @@ def init_db(db_path: str) -> None:
         _migrate_add_column(conn, "scrape_record", "description_en",    "TEXT")
         _migrate_add_column(conn, "scrape_record", "title_de",          "TEXT")
         _migrate_add_column(conn, "scrape_record", "description_de",    "TEXT")
+        _migrate_add_column(conn, "scrape_record", "latitude",          "REAL")
+        _migrate_add_column(conn, "scrape_record", "longitude",         "REAL")
 
 
 def _migrate_add_column(conn: sqlite3.Connection, table: str, column: str, col_type: str) -> None:
@@ -254,6 +258,7 @@ def _insert_scrape_record(
             title, description, organizer_name, community_name,
             event_datetime_start, event_datetime_end, timezone, activity,
             venue_name, venue_address, city, country, is_online,
+            latitude, longitude,
             cost_text, cost_factor, currency,
             tags, topic_signals, audience_signals, format_signals, vibe_signals,
             raw_category, language, detected_language,
@@ -261,7 +266,7 @@ def _insert_scrape_record(
             extraction_timestamp, search_term,
             c_idx, raw_payload
         ) VALUES (
-            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
         )
         ON CONFLICT(source_url) DO UPDATE SET
             description          = excluded.description,
@@ -272,7 +277,9 @@ def _insert_scrape_record(
             description_en       = excluded.description_en,
             title_de             = excluded.title_de,
             description_de       = excluded.description_de,
-            detected_language    = excluded.detected_language
+            detected_language    = excluded.detected_language,
+            latitude             = COALESCE(excluded.latitude, scrape_record.latitude),
+            longitude            = COALESCE(excluded.longitude, scrape_record.longitude)
         """,
         (
             rec.source, rec.source_record_id, rec.source_url, rec.canonical_url,
@@ -280,6 +287,7 @@ def _insert_scrape_record(
             rec.event_datetime_start, rec.event_datetime_end, rec.timezone, rec.activity,
             rec.venue_name, rec.venue_address, rec.city, rec.country,
             None if rec.is_online is None else int(rec.is_online),
+            rec.latitude, rec.longitude,
             rec.cost_text, rec.cost_factor, rec.currency,
             json.dumps(rec.tags),
             json.dumps(rec.topic_signals),

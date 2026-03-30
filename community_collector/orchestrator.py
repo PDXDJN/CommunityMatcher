@@ -133,16 +133,59 @@ async def collect_async(config: CollectorConfig) -> CollectionResult:
 
     log.info("orchestrator.normalized_total", count=len(normalized))
 
-    # Deduplicate by canonical_url
+    # Pass 1: deduplicate by canonical_url
     seen_urls: set[str] = set()
-    deduped: list[CommunityEventRecord] = []
+    url_deduped: list[CommunityEventRecord] = []
     for rec in normalized:
         key = rec.canonical_url or rec.source_url
         if key not in seen_urls:
             seen_urls.add(key)
-            deduped.append(rec)
+            url_deduped.append(rec)
 
-    log.info("orchestrator.after_dedup", count=len(deduped))
+    # Pass 2: cross-source fuzzy dedup — same event listed on Meetup + Luma etc.
+    # Group by date (YYYY-MM-DD) then compare titles with SequenceMatcher.
+    from difflib import SequenceMatcher
+
+    def _title_sim(a: str, b: str) -> float:
+        return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+    def _date_key(rec: CommunityEventRecord) -> str:
+        dt = rec.event_datetime_start or ""
+        return dt[:10]  # YYYY-MM-DD or ""
+
+    # Build date-bucket index
+    by_date: dict[str, list[int]] = {}
+    for i, rec in enumerate(url_deduped):
+        dk = _date_key(rec)
+        by_date.setdefault(dk, []).append(i)
+
+    dropped: set[int] = set()
+    for indices in by_date.values():
+        if len(indices) < 2:
+            continue
+        for j, idx_a in enumerate(indices):
+            if idx_a in dropped:
+                continue
+            for idx_b in indices[j + 1:]:
+                if idx_b in dropped:
+                    continue
+                a = url_deduped[idx_a]
+                b = url_deduped[idx_b]
+                if _title_sim(a.title, b.title) >= 0.85:
+                    # Same event — keep the richer record (more non-None fields)
+                    score_a = sum(1 for f in (a.description, a.venue_name, a.organizer_name,
+                                              a.event_datetime_start, a.latitude) if f)
+                    score_b = sum(1 for f in (b.description, b.venue_name, b.organizer_name,
+                                              b.event_datetime_start, b.latitude) if f)
+                    dropped.add(idx_b if score_a >= score_b else idx_a)
+
+    deduped = [rec for i, rec in enumerate(url_deduped) if i not in dropped]
+    log.info(
+        "orchestrator.after_dedup",
+        url_dedup=len(url_deduped),
+        fuzzy_dropped=len(dropped),
+        count=len(deduped),
+    )
 
     # Save normalized JSON
     norm_path = run_dir / "normalized_records.json"

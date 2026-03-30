@@ -32,6 +32,8 @@ def _base_record(raw: dict, source: str) -> dict:
         "city":             raw.get("city"),
         "country":          raw.get("country"),
         "is_online":        raw.get("is_online"),
+        "latitude":         raw.get("latitude") or raw.get("venue_lat"),
+        "longitude":        raw.get("longitude") or raw.get("venue_lon"),
         "cost_text":        raw.get("price") or raw.get("cost_text"),
         "currency":         raw.get("currency"),
         "raw_category":     raw.get("category") or raw.get("raw_category"),

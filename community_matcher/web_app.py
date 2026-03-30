@@ -12,6 +12,7 @@ import json
 import pathlib
 import sys
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
@@ -30,7 +31,7 @@ from community_matcher.orchestrator.orchestrator_agent import (
 from community_matcher.orchestrator.session_state import SessionState, OrchestratorPhase
 from community_matcher.domain.profile import UserProfile
 from community_matcher.db.sessions import (
-    load_session, save_session, count_sessions,
+    load_session, save_session, count_sessions, delete_session,
     load_bookmarks, toggle_bookmark,
 )
 
@@ -42,6 +43,10 @@ _STATIC = pathlib.Path(__file__).parent / "static"
 # In-memory agent cache (agents are not serialisable — rebuilt from DB state on miss)
 _agents: dict[str, tuple[OrchestratorAgent, SessionState]] = {}
 _executor = ThreadPoolExecutor(max_workers=4)
+
+# Background search jobs: job_id → {status, communities, searched_live, error}
+_search_jobs: dict[str, dict] = {}
+_search_job_executor = ThreadPoolExecutor(max_workers=2)
 
 
 def _get_or_create_session(session_id: str) -> tuple[OrchestratorAgent, SessionState]:
@@ -107,7 +112,7 @@ _SCHEDULER_TERMS_C = [
     "photo walk Berlin", "volleyball basketball Berlin", "urban gardening Berlin",
     "language exchange Berlin", "expat social Berlin",
 ]
-_SCHEDULER_SOURCES = ["meetup", "luma", "mobilize", "ical", "github"]
+_SCHEDULER_SOURCES = ["meetup", "luma", "eventbrite", "mobilize", "ical", "github"]
 
 
 def _run_scheduled_collection() -> None:
@@ -293,6 +298,81 @@ async def get_communities(session_id: str) -> dict:
         return {"communities": [], "error": str(exc)}
 
 
+# ── Term search ───────────────────────────────────────────────────────────────
+
+class TermSearchRequest(BaseModel):
+    session_id: str
+    term: str
+
+
+def _run_search_job(job_id: str, term: str, session_id: str) -> None:
+    """Background worker: runs DB search + optional live collection, stores result."""
+    from community_matcher.agents.txt2sql_agent import txt2sql_tool
+    from community_matcher.orchestrator.orchestrator_agent import _run_live_collection
+
+    _search_jobs[job_id]["status"] = "running"
+    try:
+        _, state = _get_or_create_session(session_id)
+        profile = state.profile
+
+        parts = [f"communities, groups, or events related to: {term}"]
+        if profile.language_pref:
+            parts.append(f"language: {', '.join(profile.language_pref)}")
+        if profile.logistics.districts:
+            parts.append(f"districts: {', '.join(profile.logistics.districts[:2])}")
+        if profile.dealbreakers:
+            parts.append(f"avoid: {', '.join(profile.dealbreakers[:2])}")
+        question = "Find " + "; ".join(parts)
+
+        def _db_query() -> list:
+            try:
+                raw = txt2sql_tool(question)
+                rows = json.loads(raw)
+                return rows if isinstance(rows, list) else []
+            except Exception:
+                return []
+
+        rows = _db_query()
+        searched_live = False
+
+        if not rows:
+            _run_live_collection(state, query_intents=[term])
+            rows = _db_query()
+            searched_live = True
+
+        _search_jobs[job_id].update(
+            status="done", communities=rows, searched_live=searched_live
+        )
+    except Exception as exc:
+        log.warning("search_job.failed", job_id=job_id, error=str(exc))
+        _search_jobs[job_id].update(status="failed", communities=[], error=str(exc))
+
+
+@app.post("/communities/search-term")
+async def search_by_term(body: TermSearchRequest) -> dict:
+    """
+    Start a background search for communities matching a free-text term.
+    Returns a job_id immediately; poll GET /communities/search-term/{job_id} for results.
+    """
+    term = body.term.strip()
+    if not term:
+        return {"job_id": None, "status": "done", "communities": []}
+
+    job_id = str(uuid.uuid4())[:8]
+    _search_jobs[job_id] = {"status": "pending", "communities": [], "searched_live": False}
+    _search_job_executor.submit(_run_search_job, job_id, term, body.session_id)
+    return {"job_id": job_id, "status": "pending"}
+
+
+@app.get("/communities/search-term/{job_id}")
+async def search_term_status(job_id: str) -> dict:
+    """Poll the status of a background term search job."""
+    job = _search_jobs.get(job_id)
+    if not job:
+        return {"status": "not_found", "communities": []}
+    return job
+
+
 # ── Bookmarks ─────────────────────────────────────────────────────────────────
 
 class BookmarkRequest(BaseModel):
@@ -311,6 +391,93 @@ async def bookmark(body: BookmarkRequest) -> dict:
 async def list_bookmarks(session_id: str) -> dict:
     """Return the set of bookmarked community IDs for a session."""
     return {"ids": list(load_bookmarks(session_id))}
+
+
+# ── Map ───────────────────────────────────────────────────────────────────────
+
+# Berlin bounding box (generous padding)
+_BERLIN_LAT_MIN, _BERLIN_LAT_MAX = 52.33, 52.72
+_BERLIN_LON_MIN, _BERLIN_LON_MAX = 13.08, 13.77
+
+
+@app.get("/map/communities/{session_id}")
+async def map_communities(session_id: str) -> dict:
+    """
+    Return scrape_record rows that have lat/lon coordinates within Berlin.
+    Used by the map view in the UI.
+    """
+    from community_matcher.db.connection import execute_query
+    try:
+        rows = execute_query(
+            "SELECT id, title, source_url, description, organizer_name, "
+            "venue_name, city, cost_factor, is_online, topic_signals, tags, "
+            "latitude, longitude, source "
+            "FROM scrape_record "
+            "WHERE latitude IS NOT NULL AND longitude IS NOT NULL "
+            "  AND latitude  BETWEEN ? AND ? "
+            "  AND longitude BETWEEN ? AND ? "
+            "ORDER BY extraction_timestamp DESC LIMIT 500",
+            params=[_BERLIN_LAT_MIN, _BERLIN_LAT_MAX,
+                    _BERLIN_LON_MIN, _BERLIN_LON_MAX],
+        )
+    except Exception as exc:
+        log.warning("map_communities.error", error=str(exc))
+        return {"communities": []}
+    return {"communities": rows or []}
+
+
+# ── Session reset ──────────────────────────────────────────────────────────────
+
+class ResetRequest(BaseModel):
+    session_id: str
+
+
+@app.post("/session/reset")
+async def reset_session(body: ResetRequest) -> dict:
+    """
+    Wipe a session completely — profile, history, and agent — so the user
+    can start a fresh conversation from scratch.
+    """
+    sid = body.session_id
+    _agents.pop(sid, None)
+    try:
+        delete_session(sid)
+    except Exception as exc:
+        log.warning("session.reset_db_failed", session_id=sid, error=str(exc))
+    log.info("session.reset", session_id=sid)
+    return {"status": "ok", "session_id": sid}
+
+
+# ── Profile filter removal ─────────────────────────────────────────────────────
+
+class ProfilePatchRequest(BaseModel):
+    session_id: str
+    remove_interest: str | None = None
+    remove_dealbreaker: str | None = None
+    remove_goal: str | None = None
+    clear_dealbreakers: bool = False
+
+
+@app.post("/session/profile/patch")
+async def patch_profile(body: ProfilePatchRequest) -> dict:
+    """
+    Remove a specific interest, dealbreaker, or goal from the user's profile.
+    Useful for letting users fine-tune their profile without restarting.
+    """
+    _, state = _get_or_create_session(body.session_id)
+    profile = state.profile
+
+    if body.remove_interest and body.remove_interest in profile.interests:
+        profile.interests.remove(body.remove_interest)
+    if body.remove_goal and body.remove_goal in profile.goals:
+        profile.goals.remove(body.remove_goal)
+    if body.clear_dealbreakers:
+        profile.dealbreakers.clear()
+    elif body.remove_dealbreaker and body.remove_dealbreaker in profile.dealbreakers:
+        profile.dealbreakers.remove(body.remove_dealbreaker)
+
+    _persist_session(body.session_id, state)
+    return {"profile": profile.model_dump()}
 
 
 # ── DB stats ──────────────────────────────────────────────────────────────────

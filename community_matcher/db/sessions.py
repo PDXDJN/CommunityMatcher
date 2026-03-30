@@ -83,6 +83,14 @@ def count_sessions() -> int:
     return get_db().execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
 
 
+def delete_session(session_id: str) -> None:
+    """Remove session data and bookmarks for a session."""
+    db = get_db()
+    db.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+    db.execute("DELETE FROM bookmarks WHERE session_id = ?", (session_id,))
+    db.commit()
+
+
 # ── Bookmark CRUD ─────────────────────────────────────────────────────────────
 
 def load_bookmarks(session_id: str) -> set[str]:

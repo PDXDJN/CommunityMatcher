@@ -18,6 +18,9 @@ _VALID_TAGS = {
     "blockchain", "maker", "design", "gaming", "social_coding",
     "language_exchange", "music", "art", "fitness", "wellness",
     "networking", "community", "tech",
+    # Non-tech lifestyle interests
+    "arts_crafts", "photography", "board_games", "sports", "dance",
+    "music_social", "outdoor_nature",
     "workshop", "talk", "conference", "hackathon", "demo_night",
     "barcamp", "coworking", "social", "seminar", "panel",
     "beginner_friendly", "newcomer_city", "english_friendly",
@@ -34,6 +37,10 @@ _ARCHETYPE_QUERIES: dict[str, str] = {
     "creative_design":      "Find design, art and creative community events",
     "wellness_fitness":     "Find fitness, wellness and sport community events",
     "grassroots_activist":  "Find grassroots tech community events and activist-tech meetups",
+    "arts_crafts":          "Find arts, crafts, photography, illustration and creative workshop communities",
+    "board_games_social":   "Find board game nights, tabletop RPG groups and game social events",
+    "sports_active":        "Find sports clubs, outdoor activity groups, cycling, hiking and fitness communities",
+    "music_performance":    "Find music groups, choir, open mic, jam sessions and dance communities",
 }
 
 

@@ -299,6 +299,6 @@ def _to_raw_dict(node: dict, search_term: str, config: CollectorConfig) -> dict 
         "event_type":      event_type,
         "group_urlname":   group.get("urlname") or "",
         "group_id":        group.get("id") or "",
-        "venue_lat":       venue.get("lat"),
-        "venue_lon":       venue.get("lon"),
+        "latitude":        venue.get("lat"),
+        "longitude":       venue.get("lon"),
     }

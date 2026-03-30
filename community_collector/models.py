@@ -31,6 +31,8 @@ class CommunityEventRecord(BaseModel):
     city: Optional[str] = None
     country: Optional[str] = None
     is_online: Optional[bool] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
     # --- Cost ---
     cost_text: Optional[str] = None

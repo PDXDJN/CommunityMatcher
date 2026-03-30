@@ -6,6 +6,8 @@
   <title>Community Matcher</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     .tag-pill{display:inline-block;padding:1px 8px;border-radius:9999px;font-size:.68rem;background:#f1f5f9;color:#475569;font-weight:500}
     html.dark .tag-pill{background:#334155;color:#94a3b8}
@@ -67,6 +69,10 @@
               class="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors"><span data-i18n="btn_communities">🏘 Communities</span></button>
       <button id="btn-saved" onclick="setView('saved')"
               class="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors"><span data-i18n="btn_saved">★ Saved</span></button>
+      <button id="btn-map" onclick="setView('map')"
+              class="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors"><span>🗺 Map</span></button>
+      <button onclick="confirmReset()" title="Start over — clear all profile data"
+              class="px-2.5 py-2 rounded-lg text-xs font-bold leading-none bg-red-900 hover:bg-red-700 transition-colors text-red-300">↺</button>
       <button id="lang-toggle" onclick="toggleLang()" title="Switch language / Sprache wechseln"
               class="px-2.5 py-2 rounded-lg text-xs font-bold leading-none bg-zinc-800 hover:bg-zinc-700 transition-colors text-zinc-200">EN</button>
       <button id="dark-toggle" onclick="toggleDark()" title="Toggle light / dark mode"
@@ -109,11 +115,15 @@
          class="hidden w-full lg:w-64 flex-shrink-0 bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700 p-4 self-start">
       <h3 class="text-sm font-bold text-gray-800 dark:text-gray-100 mb-3" data-i18n="profile_heading">📋 Your Profile</h3>
       <div id="profile-content" class="text-xs text-gray-600 dark:text-gray-400 space-y-2.5"></div>
-      <div class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
+      <div class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-2">
         <button onclick="setView('communities')"
                 class="w-full text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline"
                 data-i18n="view_matches">
           View community matches →
+        </button>
+        <button onclick="clearDealbreakers()"
+                class="w-full text-xs text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 hover:underline">
+          Clear all dealbreakers
         </button>
       </div>
     </div>
@@ -126,7 +136,7 @@
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700 p-3 mb-4 flex flex-wrap items-center gap-3">
       <input id="comm-search" type="text" data-i18n-placeholder="filter_placeholder" placeholder="Filter communities…"
              class="flex-1 min-w-40 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-             oninput="filterCommunities()" />
+             oninput="debouncedFilter()" />
       <select id="comm-sort" onchange="filterCommunities()"
               class="rounded-lg px-2 py-2 text-xs text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
         <option value="default" data-i18n="sort_default">Sort: Default</option>
@@ -149,7 +159,7 @@
 
     <div id="comm-loading" class="hidden flex-col items-center py-20 gap-4">
       <div class="spinner"></div>
-      <p class="text-sm text-gray-400 dark:text-gray-500" data-i18n="searching_msg">Searching for communities…</p>
+      <p id="comm-loading-msg" class="text-sm text-gray-400 dark:text-gray-500" data-i18n="searching_msg">Searching for communities…</p>
     </div>
 
     <div id="communities-grid" class="card-grid"></div>
@@ -164,8 +174,8 @@
 
     <div id="no-communities" class="hidden text-center py-20 text-gray-400 dark:text-gray-600">
       <p class="text-4xl mb-3">🔍</p>
-      <p class="font-medium" data-i18n="no_communities">No communities found yet.</p>
-      <p class="text-sm mt-1">
+      <p id="no-comm-main" class="font-medium" data-i18n="no_communities">No communities found yet.</p>
+      <p id="no-comm-sub" class="text-sm mt-1">
         <span data-i18n="no_communities_hint">Complete the chat profiling first, then come back here.</span>
         <button onclick="setView('chat')" class="text-blue-600 dark:text-blue-400 hover:underline ml-1" data-i18n="back_to_chat">Back to chat →</button>
       </p>
@@ -180,6 +190,16 @@
       <p class="font-medium" data-i18n="no_saved">No saved communities yet.</p>
       <p class="text-sm mt-1" data-i18n="no_saved_hint">Bookmark communities with the ★ button on any card.</p>
     </div>
+  </div>
+
+  <!-- ── MAP VIEW ───────────────────────────────────────────────────── -->
+  <div id="map-view" class="hidden">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700 p-3 mb-4 flex items-center gap-3">
+      <span class="text-sm text-gray-600 dark:text-gray-400">📍 Berlin community map — showing events &amp; groups with venue coordinates</span>
+      <button onclick="loadMap()" class="ml-auto text-xs text-blue-600 dark:text-blue-400 hover:underline">Refresh</button>
+    </div>
+    <div id="map-container" style="height:600px;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;" class="dark:border-gray-700 shadow"></div>
+    <p id="map-count" class="text-xs text-gray-400 dark:text-gray-600 text-center mt-2"></p>
   </div>
 
 </main>
@@ -352,6 +372,10 @@ let allCommunities   = [];
 let bookmarkedIds    = new Set();
 let activeTagFilters = new Set();
 let _commCacheValid  = false;
+let _termSearchInFlight  = false;
+let _termSearchCache     = new Map();   // term → rows[]
+let _preTermSearchSnap   = null;        // allCommunities before first term-search merge
+let _filterDebounceTimer = null;
 let dbTotal          = null;  // total rows in DB
 let currentPage      = 0;
 let filteredComms    = [];
@@ -371,17 +395,20 @@ const SOURCE_STYLE = {
 // ═══════════════════════════════════════════════════════════
 function setView(view) {
   currentView = view;
-  ['chat','communities','saved'].forEach(v => {
+  ['chat','communities','saved','map'].forEach(v => {
     document.getElementById(v + '-view').classList.toggle('hidden', v !== view);
   });
   const active   = 'px-3 py-2 rounded-lg text-sm font-medium bg-zinc-700 text-white hover:bg-zinc-600 transition-colors';
   const inactive = 'px-3 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors';
   const saved    = 'px-3 py-2 rounded-lg text-sm font-medium bg-yellow-500 text-zinc-900 hover:bg-yellow-400 transition-colors';
+  const mapStyle = 'px-3 py-2 rounded-lg text-sm font-medium bg-green-700 text-white hover:bg-green-600 transition-colors';
   document.getElementById('btn-chat').className        = view==='chat'        ? active   : inactive;
   document.getElementById('btn-communities').className = view==='communities' ? active   : inactive;
   document.getElementById('btn-saved').className       = view==='saved'       ? saved    : inactive;
+  document.getElementById('btn-map').className         = view==='map'         ? mapStyle : inactive;
   if (view === 'communities') loadCommunities();
   if (view === 'saved')       renderSavedView();
+  if (view === 'map')         loadMap();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -552,9 +579,9 @@ function renderProfilePanel(profile) {
   const rows    = [];
 
   if (profile.goals?.length)
-    rows.push(profileRow(t('profile_goals'), profile.goals, conf.goals));
+    rows.push(profileRow(t('profile_goals'), profile.goals, conf.goals, false, 'goal'));
   if (profile.interests?.length)
-    rows.push(profileRow(t('profile_interests'), profile.interests, conf.interests));
+    rows.push(profileRow(t('profile_interests'), profile.interests, conf.interests, false, 'interest'));
   if (profile.social_mode)
     rows.push(profileRow(t('profile_social'), [profile.social_mode.replace(/_/g,' ')], conf.social_mode));
   if (profile.environment)
@@ -566,7 +593,7 @@ function renderProfilePanel(profile) {
   if (profile.budget && profile.budget !== 'any')
     rows.push(profileRow(t('profile_budget'), [profile.budget.replace(/_/g,' ')], conf.budget));
   if (profile.dealbreakers?.length)
-    rows.push(profileRow(t('profile_dealbreakers'), profile.dealbreakers, conf.dealbreakers, true));
+    rows.push(profileRow(t('profile_dealbreakers'), profile.dealbreakers, conf.dealbreakers, true, 'dealbreaker'));
 
   if (!rows.length) return;
   content.innerHTML = rows.join('');
@@ -585,12 +612,17 @@ function _chipClass(confidence, isDealbreaker) {
   return 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600';
 }
 
-function profileRow(label, items, confidence, isDealbreaker) {
+function profileRow(label, items, confidence, isDealbreaker, field) {
   const chipCls = _chipClass(confidence, isDealbreaker);
   const confTip = confidence ? ` title="${confidence.replace(/_/g,' ')}"` : '';
-  const chips = items.map(i =>
-    `<span class="inline-block ${chipCls} rounded-full px-2 py-0.5 mr-1 mb-1 text-xs cursor-default"${confTip}>${esc(i)}</span>`
-  ).join('');
+  const chips = items.map(i => {
+    const safeVal = i.replace(/'/g, "\\'");
+    const removeBtn = field
+      ? ` <button onclick="removeProfileItem('${field}','${safeVal}');event.stopPropagation()"
+               class="ml-1 opacity-50 hover:opacity-100 text-xs leading-none" title="Remove">×</button>`
+      : '';
+    return `<span class="inline-flex items-center ${chipCls} rounded-full px-2 py-0.5 mr-1 mb-1 text-xs"${confTip}>${esc(i)}${removeBtn}</span>`;
+  }).join('');
   return `<div>
     <div class="font-semibold text-gray-500 dark:text-gray-400 mb-0.5">${label}</div>
     <div class="flex flex-wrap">${chips}</div>
@@ -634,9 +666,132 @@ async function loadCommunities(force) {
 }
 
 async function refreshCommunities() {
-  _commCacheValid = false;
-  allCommunities  = [];
+  _commCacheValid    = false;
+  allCommunities     = [];
+  _preTermSearchSnap = null;
+  _termSearchCache.clear();
   await loadCommunities(true);
+}
+
+function debouncedFilter() {
+  clearTimeout(_filterDebounceTimer);
+  _filterDebounceTimer = setTimeout(filterCommunities, 400);
+}
+
+function _setNoCommMessage(main, sub) {
+  const mainEl = document.getElementById('no-comm-main');
+  const subEl  = document.getElementById('no-comm-sub');
+  if (mainEl) mainEl.textContent = main;
+  if (subEl)  subEl.innerHTML   = sub;
+}
+
+function _resetNoCommMessage() {
+  _setNoCommMessage(
+    'No communities found yet.',
+    'Complete the chat profiling first, then come back here. ' +
+    '<button onclick="setView(\'chat\')" class="text-blue-600 dark:text-blue-400 hover:underline ml-1">Back to chat →</button>'
+  );
+}
+
+async function _triggerTermSearch(term) {
+  // Cache hit — skip network call
+  if (_termSearchCache.has(term)) {
+    const cached = _termSearchCache.get(term);
+    if (cached.length) {
+      const existingIds = new Set(allCommunities.map(c => c.id ?? c.source_url ?? c.canonical_url));
+      const fresh = cached.filter(c => !existingIds.has(c.id ?? c.source_url ?? c.canonical_url));
+      if (fresh.length) {
+        _preTermSearchSnap = _preTermSearchSnap ?? [...allCommunities];
+        allCommunities = [...allCommunities, ...fresh];
+        buildCommTagPills();
+        filterCommunities();
+        return;
+      }
+    }
+    _setNoCommMessage(`Nothing found for "${term}"`,
+      'Try a different term or <button onclick="setView(\'chat\')" class="text-blue-600 dark:text-blue-400 hover:underline">go back to chat</button> to build a profile.');
+    document.getElementById('no-communities').classList.remove('hidden');
+    return;
+  }
+
+  _termSearchInFlight = true;
+  const noComm  = document.getElementById('no-communities');
+  const loading = document.getElementById('comm-loading');
+  const loadMsg = document.getElementById('comm-loading-msg');
+  const origMsg = loadMsg ? loadMsg.textContent : '';
+
+  noComm.classList.add('hidden');
+  loading.classList.remove('hidden');
+  loading.style.display = 'flex';
+  if (loadMsg) loadMsg.textContent = `Searching for "${term}"…`;
+
+  try {
+    // Start background job
+    const startRes = await fetch('/communities/search-term', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({session_id: sessionId, term}),
+    });
+    if (!startRes.ok) throw new Error(`HTTP ${startRes.status}`);
+    const startData = await startRes.json();
+
+    // If no job (empty term), treat as done
+    if (!startData.job_id) {
+      _termSearchCache.set(term, []);
+      _setNoCommMessage(`Nothing found for "${term}"`,
+        'Try a different term or <button onclick="setView(\'chat\')" class="text-blue-600 dark:text-blue-400 hover:underline">go back to chat</button> to build a profile.');
+      noComm.classList.remove('hidden');
+      return;
+    }
+
+    // Poll until done (max 3 minutes, 2s interval)
+    const jobId = startData.job_id;
+    let attempts = 0;
+    const maxAttempts = 90;
+    let newRows = [];
+
+    while (attempts++ < maxAttempts) {
+      await new Promise(r => setTimeout(r, 2000));
+      if (loadMsg) loadMsg.textContent = `Searching for "${term}"… (${attempts * 2}s)`;
+
+      const pollRes = await fetch(`/communities/search-term/${jobId}`);
+      if (!pollRes.ok) break;
+      const poll = await pollRes.json();
+
+      if (poll.status === 'done') {
+        newRows = poll.communities || [];
+        if (poll.searched_live && loadMsg) {
+          loadMsg.textContent = `Live search complete for "${term}"`;
+        }
+        break;
+      }
+      if (poll.status === 'failed' || poll.status === 'not_found') break;
+    }
+
+    _termSearchCache.set(term, newRows);
+
+    if (newRows.length) {
+      const existingIds = new Set(allCommunities.map(c => c.id ?? c.source_url ?? c.canonical_url));
+      const fresh = newRows.filter(c => !existingIds.has(c.id ?? c.source_url ?? c.canonical_url));
+      _preTermSearchSnap = _preTermSearchSnap ?? [...allCommunities];
+      allCommunities = [...allCommunities, ...fresh];
+      buildCommTagPills();
+      filterCommunities();
+    } else {
+      _setNoCommMessage(`Nothing found for "${term}"`,
+        'Try a different term or <button onclick="setView(\'chat\')" class="text-blue-600 dark:text-blue-400 hover:underline">go back to chat</button> to build a profile.');
+      noComm.classList.remove('hidden');
+    }
+  } catch(err) {
+    console.error('Term search error:', err);
+    _resetNoCommMessage();
+    noComm.classList.remove('hidden');
+  } finally {
+    _termSearchInFlight = false;
+    loading.classList.add('hidden');
+    loading.style.display = '';
+    if (loadMsg) loadMsg.textContent = origMsg;
+  }
 }
 
 function filterCommunities() {
@@ -679,6 +834,14 @@ function clearCommFilters() {
     b.classList.remove('bg-blue-600','text-white','border-blue-600');
     b.classList.add('bg-gray-100','text-gray-600','border-gray-200');
   });
+  // Revert to the pre-term-search community set and clear the cache
+  if (_preTermSearchSnap !== null) {
+    allCommunities     = _preTermSearchSnap;
+    _preTermSearchSnap = null;
+    _termSearchCache.clear();
+    buildCommTagPills();
+  }
+  _resetNoCommMessage();
   renderCommunityGrid(allCommunities);
 }
 
@@ -755,8 +918,16 @@ function _renderPage() {
 
   if (!total) {
     grid.innerHTML = '';
-    noComm.classList.remove('hidden');
     pagDiv.classList.add('hidden');
+    const searchQ  = document.getElementById('comm-search').value.trim();
+    const tagQ     = activeTagFilters.size ? [...activeTagFilters].join(' ') : '';
+    const activeTerm = searchQ || tagQ;
+    if (activeTerm && !_termSearchInFlight) {
+      _triggerTermSearch(activeTerm);
+      return;
+    }
+    _resetNoCommMessage();
+    noComm.classList.remove('hidden');
     return;
   }
   noComm.classList.add('hidden');
@@ -950,6 +1121,130 @@ appendMessage('assistant', t('greeting'));
     }
   } catch(e) { /* session not found — fresh start is fine */ }
 })();
+
+// ═══════════════════════════════════════════════════════════
+// Reset session
+// ═══════════════════════════════════════════════════════════
+async function confirmReset() {
+  if (!confirm('Start over? This will clear your profile and conversation history.')) return;
+  try {
+    await fetch('/session/reset', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({session_id: sessionId}),
+    });
+    // Generate a new session ID so the server creates a fresh state
+    sessionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+    localStorage.setItem('cm_session_id', sessionId);
+    // Clear all local state
+    allCommunities = []; _commCacheValid = false;
+    _preTermSearchSnap = null; _termSearchCache.clear();
+    document.getElementById('chat-messages').innerHTML = '';
+    document.getElementById('profile-panel').classList.add('hidden');
+    document.getElementById('profile-content').innerHTML = '';
+    updatePhaseUI('intake');
+    setView('chat');
+    appendMessage('assistant', 'Fresh start! Tell me what kind of community you\'re looking for.');
+  } catch(err) { console.error('Reset failed:', err); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Profile patch (remove dealbreakers / interests)
+// ═══════════════════════════════════════════════════════════
+async function clearDealbreakers() {
+  try {
+    const res = await fetch('/session/profile/patch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({session_id: sessionId, clear_dealbreakers: true}),
+    });
+    const data = await res.json();
+    renderProfilePanel(data.profile);
+  } catch(err) { console.error('Profile patch failed:', err); }
+}
+
+async function removeProfileItem(field, value) {
+  const body = {session_id: sessionId};
+  if (field === 'interest')   body.remove_interest   = value;
+  if (field === 'dealbreaker') body.remove_dealbreaker = value;
+  if (field === 'goal')       body.remove_goal       = value;
+  try {
+    const res = await fetch('/session/profile/patch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    renderProfilePanel(data.profile);
+  } catch(err) { console.error('Profile patch failed:', err); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Map (Berlin, Leaflet.js)
+// ═══════════════════════════════════════════════════════════
+let _leafletMap = null;
+let _mapMarkers = null;
+
+async function loadMap() {
+  // Initialise map once
+  if (!_leafletMap) {
+    _leafletMap = L.map('map-container').setView([52.52, 13.405], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 18,
+    }).addTo(_leafletMap);
+    _mapMarkers = L.layerGroup().addTo(_leafletMap);
+  }
+
+  _mapMarkers.clearLayers();
+  document.getElementById('map-count').textContent = 'Loading…';
+
+  try {
+    const res = await fetch(`/map/communities/${encodeURIComponent(sessionId)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const communities = data.communities || [];
+
+    communities.forEach(c => {
+      const lat = c.latitude;
+      const lon = c.longitude;
+      if (!lat || !lon) return;
+
+      const title = esc(c.title || c.name || 'Unknown');
+      const desc  = esc((c.description || '').slice(0, 140));
+      const src   = (c.source || '').toLowerCase();
+      const url   = c.source_url || '';
+      const free  = c.cost_factor === 0 ? ' · Free' : '';
+      const color = src === 'meetup' ? '#7c3aed' : src === 'luma' ? '#0d9488' : '#ea580c';
+
+      const icon = L.divIcon({
+        html: `<div style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
+        className: '',
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+      });
+
+      const popup = `
+        <div style="max-width:240px;font-family:sans-serif">
+          <p style="font-weight:700;font-size:.85rem;margin:0 0 4px">${title}</p>
+          ${desc ? `<p style="font-size:.75rem;color:#64748b;margin:0 0 6px">${desc}…</p>` : ''}
+          <p style="font-size:.7rem;color:#94a3b8;margin:0 0 4px">${src}${free}</p>
+          ${url ? `<a href="${url}" target="_blank" rel="noopener" style="font-size:.75rem;color:#3b82f6">View event →</a>` : ''}
+        </div>`;
+
+      L.marker([lat, lon], {icon}).addTo(_mapMarkers).bindPopup(popup);
+    });
+
+    document.getElementById('map-count').textContent =
+      `${communities.length} location${communities.length !== 1 ? 's' : ''} with venue coordinates`;
+
+    // Force Leaflet to recalculate size (tab was hidden during init)
+    setTimeout(() => _leafletMap.invalidateSize(), 100);
+  } catch(err) {
+    console.error('Map load error:', err);
+    document.getElementById('map-count').textContent = 'Failed to load map data.';
+  }
+}
 </script>
 </body>
 </html>
