@@ -106,14 +106,20 @@ def _logistics_fit(profile_logistics, candidate_tags: list[str], combined_text: 
     return 0.45 if known_in_text else 0.4
 
 
-def _values_fit(dealbreakers: list[str], combined_text: str, vibe: dict | None = None) -> float:
-    """Score values alignment. Returns 0.0 if any dealbreaker is hit.
+def _values_fit(
+    dealbreakers: list[str], combined_text: str, vibe: dict | None = None
+) -> tuple[float, bool]:
+    """Score values alignment. Also returns whether a dealbreaker was strongly hit.
 
-    Uses both text matching and the LLM-powered vibe dimensions (alcohol_centrality,
-    corporate_ness) when available for more accurate dealbreaker detection.
+    Returns (score, dealbreaker_hit) where:
+      - score=1.0, hit=False — no dealbreaker match
+      - score=0.3, hit=True  — soft hit (vibe dimension in 0.4–0.6 range)
+      - score=0.0, hit=True  — hard hit (vibe > 0.6 or text match)
+
+    Callers should apply a further penalty multiplier when hit=True.
     """
     t = combined_text.lower()
-    alcohol  = (vibe or {}).get("alcohol_centrality", None)
+    alcohol   = (vibe or {}).get("alcohol_centrality", None)
     corporate = (vibe or {}).get("corporate_ness", None)
 
     for db in dealbreakers:
@@ -121,16 +127,20 @@ def _values_fit(dealbreakers: list[str], combined_text: str, vibe: dict | None =
         # Structural vibe-dimension checks (more reliable than text matching)
         if db_lower in ("alcohol", "too much alcohol", "alcohol-heavy") and alcohol is not None:
             if alcohol > 0.6:
-                return 0.0
+                return 0.0, True
+            if alcohol > 0.4:
+                return 0.3, True  # soft hit — still show but demote
             continue
         if db_lower in ("corporate", "too corporate") and corporate is not None:
             if corporate > 0.6:
-                return 0.0
+                return 0.0, True
+            if corporate > 0.4:
+                return 0.3, True
             continue
         # Text-based fallback for all other dealbreakers
         if db_lower in t:
-            return 0.0
-    return 1.0
+            return 0.0, True
+    return 1.0, False
 
 
 def _recurrence_strength(candidate_tags: list[str]) -> float:
@@ -154,16 +164,20 @@ def _score_candidate(candidate: dict, profile: dict) -> dict:
         (candidate.get("venue") or "")
     )
 
+    values_score, dealbreaker_hit = _values_fit(dealbreakers, combined_text, vibe)
+
     scores = {
         "interest_alignment":    round(_interest_alignment(interests, tags), 3),
         "vibe_alignment":        round(max(0.0, min(1.0, _vibe_alignment(social_mode, vibe))), 3),
         "newcomer_friendliness": round(vibe.get("newcomer_friendliness", 0.5), 3),
         "logistics_fit":         round(_logistics_fit(logistics, tags, combined_text), 3),
         "language_fit":          round(_language_fit(lang_pref, tags), 3),
-        "values_fit":            round(_values_fit(dealbreakers, combined_text, vibe), 3),
+        "values_fit":            round(values_score, 3),
         "recurrence_strength":   round(_recurrence_strength(tags), 3),
         "risk_sanity":           round(risk.get("risk_sanity_score", 0.8), 3),
     }
+    if dealbreaker_hit:
+        scores["dealbreaker_hit"] = True
 
     s = settings
     total = (
@@ -176,6 +190,13 @@ def _score_candidate(candidate: dict, profile: dict) -> dict:
         + s.weight_recurrence_strength * scores["recurrence_strength"]
         + s.weight_risk_sanity         * scores["risk_sanity"]
     )
+
+    # Apply a strong demotion multiplier when a dealbreaker was matched.
+    # This pushes dealbreaker results well below neutral alternatives even if
+    # their other dimensions (interest, vibe) score highly.
+    if dealbreaker_hit:
+        total *= 0.45
+
     scores["total"] = round(total, 4)
     candidate["_scores"] = scores
     return candidate

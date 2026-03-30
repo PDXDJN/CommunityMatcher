@@ -15,6 +15,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from collections import OrderedDict
 
 import structlog
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -44,9 +45,27 @@ _STATIC = pathlib.Path(__file__).parent / "static"
 _agents: dict[str, tuple[OrchestratorAgent, SessionState]] = {}
 _executor = ThreadPoolExecutor(max_workers=4)
 
-# Background search jobs: job_id → {status, communities, searched_live, error}
-_search_jobs: dict[str, dict] = {}
+# Background search jobs: job_id → {status, communities, searched_live, error, _created_at}
+# Uses OrderedDict for insertion-order eviction; capped at _SEARCH_JOB_MAX entries.
+_search_jobs: OrderedDict[str, dict] = OrderedDict()
 _search_job_executor = ThreadPoolExecutor(max_workers=2)
+_SEARCH_JOB_MAX = 100          # hard cap on dict size
+_SEARCH_JOB_TTL = 3600.0       # seconds — expire completed/failed jobs after 1 hour
+
+
+def _evict_search_jobs() -> None:
+    """Remove expired or excess entries from _search_jobs.  Call before adding new jobs."""
+    now = time.monotonic()
+    stale = [
+        jid for jid, job in _search_jobs.items()
+        if job["status"] in ("done", "failed")
+        and now - job.get("_created_at", now) > _SEARCH_JOB_TTL
+    ]
+    for jid in stale:
+        del _search_jobs[jid]
+    # If still over cap, drop oldest entries regardless of status
+    while len(_search_jobs) >= _SEARCH_JOB_MAX:
+        _search_jobs.popitem(last=False)
 
 
 def _get_or_create_session(session_id: str) -> tuple[OrchestratorAgent, SessionState]:
@@ -358,8 +377,14 @@ async def search_by_term(body: TermSearchRequest) -> dict:
     if not term:
         return {"job_id": None, "status": "done", "communities": []}
 
+    _evict_search_jobs()
     job_id = str(uuid.uuid4())[:8]
-    _search_jobs[job_id] = {"status": "pending", "communities": [], "searched_live": False}
+    _search_jobs[job_id] = {
+        "status": "pending",
+        "communities": [],
+        "searched_live": False,
+        "_created_at": time.monotonic(),
+    }
     _search_job_executor.submit(_run_search_job, job_id, term, body.session_id)
     return {"job_id": job_id, "status": "pending"}
 

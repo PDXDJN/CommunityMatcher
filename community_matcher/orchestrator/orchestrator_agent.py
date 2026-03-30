@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import structlog
 from community_matcher.orchestrator.session_state import SessionState, OrchestratorPhase
@@ -16,6 +17,7 @@ from community_matcher.agents.search_planner_agent import search_planner_tool
 from community_matcher.agents.ranking_agent import ranking_tool
 from community_matcher.agents.recommendation_writer_agent import recommendation_writer_tool
 from community_matcher.agents.txt2sql_agent import txt2sql_tool, tag_search
+from community_matcher.agents.vector_search_tool import vector_search_tool
 from community_matcher.agents.vibe_classifier_agent import vibe_classifier_tool
 from community_matcher.agents.risk_sanity_agent import risk_sanity_tool
 
@@ -440,21 +442,143 @@ def _wants_research(text: str) -> bool:
     return any(kw in t for kw in _RESEARCH_TRIGGERS)
 
 
+# ── JSON parse helpers ────────────────────────────────────────────────────────
+
+def _safe_parse_json_rows(raw: str, source: str) -> list[dict]:
+    """Parse a JSON array from an agent result, distinguishing errors from empty.
+
+    - Returns [] and logs nothing if the raw string is a valid empty array.
+    - Returns [] and logs a warning if the string is unparseable or not a list
+      (so callers can see when LLM returned garbage vs. genuinely empty results).
+    """
+    if not raw or raw.strip() in ("", "[]", "null"):
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        log.warning("json_parse.garbage", source=source, error=str(exc), preview=raw[:120])
+        return []
+    if isinstance(parsed, dict) and "error" in parsed:
+        log.warning("json_parse.agent_error", source=source, detail=parsed.get("detail", parsed["error"]))
+        return []
+    if not isinstance(parsed, list):
+        log.warning("json_parse.unexpected_type", source=source, type=type(parsed).__name__, preview=str(parsed)[:120])
+        return []
+    return parsed
+
+
+# ── Organizer aggregation ─────────────────────────────────────────────────────
+
+def _aggregate_by_organizer(rows: list[dict]) -> list[dict]:
+    """Collapse multiple events from the same organizer into one representative entry.
+
+    When an organizer has ≥2 events in the results, we:
+      - Keep the highest-scored row as the representative entry.
+      - Boost its recurrence_strength score to reflect multiple events.
+      - Annotate it with a '_event_count' field.
+      - Drop the other rows for that organizer.
+
+    Rows with no organizer_name (or blank) are kept as-is.
+    The relative ranking order of representative rows is preserved.
+    """
+    if not rows:
+        return rows
+
+    seen_organizer: dict[str, dict] = {}  # organizer_name → best row so far
+    organizer_count: dict[str, int] = {}
+    ungrouped: list[dict] = []
+
+    for row in rows:
+        org = (row.get("organizer_name") or "").strip().lower()
+        if not org:
+            ungrouped.append(row)
+            continue
+        organizer_count[org] = organizer_count.get(org, 0) + 1
+        if org not in seen_organizer:
+            seen_organizer[org] = row
+        else:
+            # Keep the row with the higher total score
+            current_best = seen_organizer[org]
+            if (row.get("_scores", {}).get("total", 0)
+                    > current_best.get("_scores", {}).get("total", 0)):
+                seen_organizer[org] = row
+
+    result: list[dict] = []
+    emitted_orgs: set[str] = set()
+
+    for row in rows:
+        org = (row.get("organizer_name") or "").strip().lower()
+        if not org:
+            result.append(row)
+            continue
+        if org in emitted_orgs:
+            continue
+        best = seen_organizer[org]
+        count = organizer_count[org]
+        best["_event_count"] = count
+        if count >= 2:
+            # Boost recurrence_strength for organizers with multiple events
+            scores = best.get("_scores", {})
+            scores["recurrence_strength"] = min(1.0, scores.get("recurrence_strength", 0.4) + 0.3)
+            # Re-compute total with boosted recurrence
+            from community_matcher.config.settings import settings as _s
+            scores["total"] = round(
+                _s.weight_interest_alignment    * scores.get("interest_alignment", 0)
+                + _s.weight_vibe_alignment      * scores.get("vibe_alignment", 0)
+                + _s.weight_newcomer_friendliness * scores.get("newcomer_friendliness", 0)
+                + _s.weight_logistics_fit       * scores.get("logistics_fit", 0)
+                + _s.weight_language_fit        * scores.get("language_fit", 0)
+                + _s.weight_values_fit          * scores.get("values_fit", 0)
+                + _s.weight_recurrence_strength * scores["recurrence_strength"]
+                + _s.weight_risk_sanity         * scores.get("risk_sanity", 0),
+                4,
+            )
+            best["_scores"] = scores
+        result.append(best)
+        emitted_orgs.add(org)
+
+    log.debug("aggregation.done", input=len(rows), output=len(result))
+    return result
+
+
 # ── Full search pipeline ──────────────────────────────────────────────────────
 
 def _agent_call(name: str, fn, *args, **kwargs):
-    """Invoke an agent tool with start/end/timing logs."""
+    """Invoke an agent tool with start/end/timing logs and a wall-clock timeout.
+
+    Runs the tool in a daemon thread so a hung LLM call does not block the
+    entire request indefinitely.  Raises TimeoutError if the call exceeds
+    settings.llm_timeout_seconds.
+    """
     log.info("agent.start", agent=name)
     t0 = time.perf_counter()
-    try:
-        result = fn(*args, **kwargs)
-        elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
-        log.info("agent.done", agent=name, elapsed_ms=elapsed_ms)
-        return result
-    except Exception as exc:
-        elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
-        log.warning("agent.error", agent=name, elapsed_ms=elapsed_ms, error=str(exc))
-        raise
+    timeout = settings.llm_timeout_seconds
+
+    result_holder: list = [None]
+    exc_holder: list = [None]
+
+    def _run() -> None:
+        try:
+            result_holder[0] = fn(*args, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            exc_holder[0] = exc
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+
+    elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+    if thread.is_alive():
+        log.warning("agent.timeout", agent=name, timeout=timeout, elapsed_ms=elapsed_ms)
+        raise TimeoutError(f"{name} timed out after {timeout}s")
+
+    if exc_holder[0] is not None:
+        log.warning("agent.error", agent=name, elapsed_ms=elapsed_ms, error=str(exc_holder[0]))
+        raise exc_holder[0]
+
+    log.info("agent.done", agent=name, elapsed_ms=elapsed_ms)
+    return result_holder[0]
 
 
 def _rerank_cached(state: SessionState) -> str:
@@ -476,10 +600,9 @@ def _rerank_cached(state: SessionState) -> str:
     ranked_json = _agent_call("ranking_tool (rerank)", ranking_tool, json.dumps(rows), profile_json)
     formatted = _agent_call("recommendation_writer_tool (rerank)", recommendation_writer_tool, ranked_json)
     # Update the cache with the newly ranked order
-    try:
-        state.last_ranked_rows = json.loads(ranked_json)
-    except Exception:
-        pass
+    reranked = _safe_parse_json_rows(ranked_json, "ranking_rerank")
+    if reranked:
+        state.last_ranked_rows = reranked
     return formatted
 
 
@@ -517,16 +640,7 @@ def _run_search_pipeline(state: SessionState) -> str:
 
     # Step 2: txt2sql → raw rows
     raw_json = _agent_call("txt2sql_tool", txt2sql_tool, search_query)
-    try:
-        rows = json.loads(raw_json)
-    except Exception:
-        rows = []
-
-    if isinstance(rows, dict) and "error" in rows:
-        return f"[search error: {rows.get('detail', rows['error'])}]"
-
-    if not isinstance(rows, list):
-        rows = []
+    rows = _safe_parse_json_rows(raw_json, "txt2sql")
 
     stale = _rows_are_stale(rows)
     log.info(
@@ -548,13 +662,10 @@ def _run_search_pipeline(state: SessionState) -> str:
         if live_preamble:
             # Re-query DB with fresh data
             raw_json2 = _agent_call("txt2sql_tool (retry)", txt2sql_tool, search_query)
-            try:
-                rows2 = json.loads(raw_json2)
-                if isinstance(rows2, list) and len(rows2) > len(rows):
-                    rows = rows2
-                    log.info("orchestrator.rows_fetched_after_live", row_count=len(rows))
-            except Exception:
-                pass
+            rows2 = _safe_parse_json_rows(raw_json2, "txt2sql_retry")
+            if len(rows2) > len(rows):
+                rows = rows2
+                log.info("orchestrator.rows_fetched_after_live", row_count=len(rows))
 
     if not rows:
         # Tag-based fallback: bypass LLM entirely and query signal columns directly
@@ -585,6 +696,19 @@ def _run_search_pipeline(state: SessionState) -> str:
             free_only=free_only,
             limit=30,
         )
+
+    if not rows:
+        # Vector (TF-IDF) fallback — handles open-ended/abstract queries
+        # that don't map to known tag slugs and survived live collection.
+        vector_query = query_intents[0] if query_intents else search_query
+        log.info("orchestrator.vector_search_fallback", query=vector_query[:80])
+        try:
+            raw_vec = _agent_call("vector_search_tool", vector_search_tool, vector_query)
+            rows = _safe_parse_json_rows(raw_vec, "vector_search")
+            if rows:
+                log.info("orchestrator.vector_search_hit", row_count=len(rows))
+        except Exception as exc:
+            log.warning("orchestrator.vector_search_error", error=str(exc))
 
     if not rows:
         searched = ", ".join(query_intents[:3]) if query_intents else search_query[:80]
@@ -643,23 +767,29 @@ def _run_search_pipeline(state: SessionState) -> str:
             if fresh_preamble:
                 live_preamble = fresh_preamble
                 raw_json2 = _agent_call("txt2sql_tool (quality-retry)", txt2sql_tool, search_query)
-                try:
-                    rows2 = json.loads(raw_json2)
-                    if isinstance(rows2, list) and len(rows2) > 0:
-                        rows = rows2
-                        log.info("orchestrator.rows_after_quality_retry", row_count=len(rows))
-                except Exception:
-                    pass
+                rows2 = _safe_parse_json_rows(raw_json2, "txt2sql_quality_retry")
+                if rows2:
+                    rows = rows2
+                    log.info("orchestrator.rows_after_quality_retry", row_count=len(rows))
 
     # Step 4: Rank
     ranked_json = _agent_call("ranking_tool", ranking_tool, json.dumps(rows), profile_json)
 
-    # Cache the ranked rows on the session so the refinement loop can re-rank
-    # without re-querying the database.
-    try:
-        state.last_ranked_rows = json.loads(ranked_json)
-    except Exception:
-        pass
+    # Step 4b: Aggregate — collapse multiple events from the same organizer
+    # into a single boosted entry so the user sees communities, not raw event lists.
+    ranked_rows = _safe_parse_json_rows(ranked_json, "ranking")
+    aggregated_rows = _aggregate_by_organizer(ranked_rows)
+    if len(aggregated_rows) != len(ranked_rows):
+        log.info(
+            "orchestrator.aggregated",
+            before=len(ranked_rows),
+            after=len(aggregated_rows),
+        )
+    ranked_json = json.dumps(aggregated_rows)
+
+    # Cache for the refinement loop
+    if aggregated_rows:
+        state.last_ranked_rows = aggregated_rows
 
     # Step 5: Format recommendations
     formatted = _agent_call("recommendation_writer_tool", recommendation_writer_tool, ranked_json)
@@ -776,8 +906,17 @@ class OrchestratorAgent:
             return f"[search failed: {exc}]"
 
     def _handle_aggregating(self) -> str:
+        """Re-aggregate cached rows (e.g. after a partial re-search that left rows in state)."""
+        if self.state.last_ranked_rows:
+            aggregated = _aggregate_by_organizer(self.state.last_ranked_rows)
+            self.state.last_ranked_rows = aggregated
+            log.info(
+                "orchestrator.aggregating_phase",
+                before=len(self.state.last_ranked_rows),
+                after=len(aggregated),
+            )
         self.state.advance_phase(OrchestratorPhase.RECOMMENDING)
-        return "[orchestrator] Aggregating results... (stub)"
+        return self._handle_recommending()
 
     def _handle_recommending(self) -> str:
         self.state.advance_phase(OrchestratorPhase.REFINING)

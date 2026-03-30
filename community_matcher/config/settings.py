@@ -31,6 +31,7 @@ class Settings(BaseModel):
     log_level: str = "INFO"
     max_questions_per_turn: int = 3
     sufficiency_threshold: float = 0.6
+    llm_timeout_seconds: float = 30.0  # per-agent-call wall-clock timeout
 
     # Scoring weights (CLAUDE.md formula)
     weight_interest_alignment: float = 0.25
