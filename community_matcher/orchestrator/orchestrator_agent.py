@@ -25,11 +25,12 @@ log = structlog.get_logger()
 # ── Lightweight keyword-based profile extraction (fast fallback) ──────────────
 
 _INTEREST_KEYWORDS: dict[str, list[str]] = {
+    # Tech
     "ai":            ["ai", "artificial intelligence", "machine learning", "llm", "gpt"],
     "python":        ["python"],
     "data_science":  ["data science", "data engineering", "analytics"],
     "startup":       ["startup", "founder", "entrepreneurship", "venture"],
-    "gaming":        ["gaming", "games", "esports", "game dev"],
+    "gaming":        ["gaming", "games", "esports", "game dev", "video game"],
     "maker":         ["maker", "hardware", "arduino", "3d print", "robot"],
     "cybersecurity": ["security", "ctf", "hacking", "infosec"],
     "design":        ["design", "ux", "ui", "product design"],
@@ -37,8 +38,42 @@ _INTEREST_KEYWORDS: dict[str, list[str]] = {
     "blockchain":    ["blockchain", "crypto", "web3"],
     "music":         ["music", "concert", "dj"],
     "art":           ["art", "gallery", "exhibition"],
-    "fitness":       ["fitness", "run", "yoga", "sport"],
+    "fitness":       ["fitness", "yoga", "gym"],
     "tech":          ["nerdy", "nerd", "geek", "geeky", "tech"],
+    # Non-tech interests
+    "arts_crafts":   [
+        "craft", "crafts", "painting", "drawing", "watercolor", "pottery",
+        "ceramics", "knitting", "sewing", "embroidery", "crochet", "printmaking",
+        "linocut", "textile", "illustration", "urban sketch", "life drawing",
+        "mosaic", "collage", "sculpt",
+    ],
+    "photography":   [
+        "photo", "photography", "fotografi", "darkroom", "lightroom",
+        "street photo", "film photo", "analog photo", "photo walk", "fotowalk",
+    ],
+    "board_games":   [
+        "board game", "boardgame", "tabletop", "rpg", "role play",
+        "dungeons", "dragons", "warhammer", "card game", "chess", "game night",
+        "brettspiel", "spieleabend", "pen and paper",
+    ],
+    "sports":        [
+        "cycling", "bike", "hiking", "trail", "run", "running", "marathon",
+        "volleyball", "football", "soccer", "basketball", "badminton",
+        "tennis", "swimming", "rowing", "kayak", "martial art",
+        "karate", "judo", "boxing", "crossfit", "sport",
+    ],
+    "dance":         [
+        "dance", "salsa", "tango", "bachata", "swing", "lindy hop",
+        "ballet", "contemporary", "ballroom", "social dance", "tanzen",
+    ],
+    "music_social":  [
+        "choir", "singing", "open mic", "jam session", "ukulele",
+        "guitar circle", "ensemble", "acapella", "karaoke", "chor", "singen",
+    ],
+    "outdoor_nature": [
+        "urban garden", "birdwatch", "nature walk", "foraging", "permaculture",
+        "allotment", "kleingarten", "outdoors", "hiking", "park",
+    ],
 }
 
 _GOAL_KEYWORDS: dict[str, list[str]] = {
@@ -174,9 +209,13 @@ def _enrich_profile_from_turn(text: str, profile) -> None:
 # ── Valid DB tags ─────────────────────────────────────────────────────────────
 
 _VALID_DB_TAGS = {
+    # Tech
     "ai", "python", "data_science", "startup", "cloud", "cybersecurity",
     "blockchain", "maker", "design", "gaming", "social_coding",
     "language_exchange", "music", "art", "fitness", "wellness",
+    # Non-tech interests
+    "arts_crafts", "photography", "board_games", "sports", "dance",
+    "music_social", "outdoor_nature",
     "networking", "community", "tech",
     "workshop", "talk", "conference", "hackathon", "demo_night",
     "barcamp", "coworking", "social", "seminar", "meetup_event", "panel",

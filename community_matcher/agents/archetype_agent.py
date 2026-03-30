@@ -49,6 +49,29 @@ _ARCHETYPES: dict[str, dict] = {
         "goals":        {"community": 1.0},
         "social_modes": {"talk": 0.5, "workshop": 0.5},
     },
+    "arts_crafts": {
+        "interests":    {
+            "arts_crafts": 1.0, "photography": 0.9, "design": 0.6,
+            "music_social": 0.5, "dance": 0.5,
+        },
+        "goals":        {"friends": 0.6, "community": 0.5, "learning": 0.4},
+        "social_modes": {"workshop": 0.8, "social": 0.6},
+    },
+    "board_games_social": {
+        "interests":    {"board_games": 1.0, "gaming": 0.7},
+        "goals":        {"friends": 1.0},
+        "social_modes": {"social": 1.0},
+    },
+    "sports_active": {
+        "interests":    {"sports": 1.0, "outdoor_nature": 0.7, "dance": 0.4},
+        "goals":        {"friends": 0.6, "community": 0.4},
+        "social_modes": {"social": 0.6},
+    },
+    "music_performance": {
+        "interests":    {"music_social": 1.0, "dance": 0.7, "arts_crafts": 0.3},
+        "goals":        {"friends": 0.5, "community": 0.5},
+        "social_modes": {"social": 0.7, "workshop": 0.4},
+    },
 }
 
 

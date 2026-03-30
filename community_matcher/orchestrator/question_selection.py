@@ -3,7 +3,7 @@ from community_matcher.domain.profile import UserProfile
 
 QUESTION_BANK: dict[str, str] = {
     "primary_goal": "What brings you here — are you looking for friends, professional connections, or something else?",
-    "interest_cluster": "What topics or activities excite you most? (e.g. coding, games, AI, art)",
+    "interest_cluster": "What topics or activities excite you most? (e.g. coding, AI, photography, board games, sports, crafts, dance)",
     "social_mode": "Do you prefer workshops, talks, casual drinks, project nights, or something else?",
     "environment": "Are you looking for a welcoming newcomer space, or a tight-knit regular community?",
     "logistics": "Which part of the city are you in, and how long are you willing to travel?",

@@ -80,7 +80,7 @@ DEFAULT_BERLIN_TOPICS: list[str] = [
     "freelancer Berlin",
     "remote work community",
     "founder community",
-    # Social / hobby
+    # Social / hobby (tech-adjacent, already present)
     "board games Berlin",
     "chess Berlin",
     "photography Berlin",
@@ -88,6 +88,48 @@ DEFAULT_BERLIN_TOPICS: list[str] = [
     "science communication",
     "running club Berlin",
     "climbing bouldering Berlin",
+    # Arts & crafts
+    "painting drawing Berlin",
+    "watercolor acrylic Berlin",
+    "pottery ceramics Berlin",
+    "knitting sewing Berlin",
+    "craft workshop Berlin",
+    "printmaking Berlin",
+    "textile art Berlin",
+    "urban sketching Berlin",
+    # Photography & film
+    "photo walk Berlin",
+    "film photography Berlin",
+    "street photography Berlin",
+    "photo club Berlin",
+    "darkroom photography",
+    # Board games & tabletop
+    "tabletop RPG Berlin",
+    "Dungeons Dragons Berlin",
+    "board game café Berlin",
+    "wargaming Berlin",
+    "card games Berlin",
+    # Sports & outdoor activities
+    "cycling Berlin",
+    "hiking Berlin",
+    "yoga outdoors Berlin",
+    "swimming Berlin",
+    "volleyball Berlin",
+    "football soccer Berlin",
+    "basketball Berlin",
+    "martial arts Berlin",
+    "dance social Berlin",
+    "salsa tango Berlin",
+    # Music & performance
+    "choir singing Berlin",
+    "open mic Berlin",
+    "jam session Berlin",
+    "music appreciation Berlin",
+    "concert community Berlin",
+    # Outdoor & nature
+    "urban gardening Berlin",
+    "birdwatching Berlin",
+    "nature walks Berlin",
 ]
 
 
@@ -213,6 +255,48 @@ TOPIC_KEYWORDS: dict[str, list[str]] = {
     "networking": [
         "networking", "mixer", "meet founders",
     ],
+    # ── Non-tech interest categories ──────────────────────────────────────────
+    "arts_crafts": [
+        "painting", "drawing", "watercolor", "acrylic", "pottery", "ceramics",
+        "knitting", "sewing", "embroidery", "crochet", "craft", "printmaking",
+        "textile", "screen printing", "linocut", "collage", "illustration",
+        "urban sketching", "life drawing", "sculpture", "mosaic",
+        "arts and crafts", "basteln", "töpfern", "malen", "zeichnen",
+    ],
+    "photography": [
+        "photography", "photo walk", "fotografie", "darkroom", "lightroom",
+        "street photography", "portrait", "photo club", "film photography",
+        "analog photography", "digital photography", "photo editing",
+        "instagram walk", "photo tour", "fotowalk",
+    ],
+    "board_games": [
+        "board game", "boardgame", "tabletop", "rpg", "role playing",
+        "dungeons", "dragons", "warhammer", "card game", "trading card",
+        "chess", "go", "strategy game", "game night", "brettspiel",
+        "pen and paper", "rollenspiel", "spieleabend",
+    ],
+    "sports": [
+        "cycling", "bike ride", "hiking", "trail", "running", "marathon",
+        "volleyball", "football", "soccer", "basketball", "badminton",
+        "tennis", "swimming", "rowing", "kayak", "martial arts",
+        "karate", "judo", "boxing", "crossfit", "climbing", "bouldering",
+        "sport", "sports club", "sportverein",
+    ],
+    "dance": [
+        "dance", "salsa", "tango", "bachata", "swing", "lindy hop",
+        "ballet", "contemporary dance", "hip hop dance", "ballroom",
+        "social dance", "dance class", "tanzen", "tanzclub",
+    ],
+    "music_social": [
+        "choir", "singing", "open mic", "jam session", "music appreciation",
+        "concert", "band practice", "ukulele", "guitar circle", "orchestra",
+        "ensemble", "acapella", "karaoke", "chor", "singen",
+    ],
+    "outdoor_nature": [
+        "urban gardening", "birdwatching", "nature walk", "garden", "park",
+        "hiking", "foraging", "permaculture", "allotment", "kleingarten",
+        "naturschutz", "green", "outdoor",
+    ],
 }
 
 
@@ -234,6 +318,11 @@ FORMAT_KEYWORDS: dict[str, list[str]] = {
     "social":        ["social", "gathering", "hangout", "chill", "casual meet"],
     "seminar":       ["seminar", "webinar", "online talk"],
     "barcamp":       ["barcamp", "unconference", "open space", "open space technology"],
+    "game_night":    ["game night", "spieleabend", "board game night", "gaming night"],
+    "sports_session": ["training", "practice", "match", "game", "run", "ride", "hike"],
+    "craft_session": ["crafting", "craft night", "make session", "create together"],
+    "photo_walk":    ["photo walk", "fotowalk", "photography walk", "photo tour"],
+    "open_mic":      ["open mic", "open stage", "jam session", "open call"],
 }
 
 
@@ -343,8 +432,10 @@ CATEGORY_MAP: list[tuple[str, list[str]]] = [
         "community", "networking", "talk", "workshop", "social",
         "language_exchange", "newcomer_friendly", "newcomer_city",
     ]),
-    ("gaming",      ["gaming"]),
+    ("gaming",      ["gaming", "board_games"]),
     ("design",      ["design"]),
+    ("arts_crafts", ["arts_crafts", "photography", "music_social", "dance"]),
+    ("sports",      ["sports", "outdoor_nature"]),
 ]
 
 
@@ -380,6 +471,13 @@ TAG_SCORE_BOOSTS: dict[str, float] = {
     "open_source":       1.5,
     "grassroots":        2.0,
     "queer_inclusive":   2.0,
+    "arts_crafts":       2.0,
+    "photography":       2.0,
+    "board_games":       2.0,
+    "sports":            2.0,
+    "dance":             2.0,
+    "music_social":      2.0,
+    "outdoor_nature":    1.5,
 }
 
 QUERY_TITLE_BOOST   = 30.0  # exact query match in title

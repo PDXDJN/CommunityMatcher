@@ -115,9 +115,45 @@ LIMIT 20;
 
 NOTE: tags, topic_signals, audience_signals, format_signals, vibe_signals are stored
 as JSON arrays (TEXT). Use LIKE '%"tagname"%' to search within them.
-Known tag values include: ai, python, data_science, startup, cloud, cybersecurity,
-blockchain, maker, design, gaming, social_coding, language_exchange, workshop, talk,
-conference, hackathon, demo_night, barcamp, coworking, social, networking,
-beginner_friendly, newcomer_city, english_friendly, lgbtq_friendly, after_work,
-free, paid, online, in_person, grassroots, technical, casual, career_oriented.
+Known topic tag values include:
+  Tech: ai, python, data_science, startup, cloud, cybersecurity, blockchain, maker,
+        design, gaming, social_coding, language_exchange, open_source, tech, networking
+  Arts & lifestyle: arts_crafts, photography, board_games, sports, dance, music_social,
+                    outdoor_nature
+  Formats: workshop, talk, conference, hackathon, demo_night, barcamp, coworking, social,
+           game_night, sports_session, craft_session, photo_walk, open_mic
+  Audience: beginner_friendly, newcomer_city, english_friendly, lgbtq_friendly, after_work,
+            family_friendly, professional, developer_focused, founder_focused
+  Vibe: grassroots, technical, casual, career_oriented, queer_inclusive, newcomer_friendly,
+        alcohol_light, social_drinking, corporate
+  Logistics: free, paid, online, in_person
+
+Example queries for non-tech interests:
+-- Photography communities:
+SELECT title, source_url FROM scrape_record
+WHERE topic_signals LIKE '%"photography"%'
+   OR tags LIKE '%"photography"%'
+   OR title LIKE '%photo%' OR title LIKE '%fotograf%'
+LIMIT 20;
+
+-- Board games / tabletop:
+SELECT title, source_url FROM scrape_record
+WHERE topic_signals LIKE '%"board_games"%'
+   OR tags LIKE '%"board_games"%'
+   OR title LIKE '%board game%' OR title LIKE '%tabletop%' OR title LIKE '%spieleabend%'
+LIMIT 20;
+
+-- Sports and active groups:
+SELECT title, source_url FROM scrape_record
+WHERE topic_signals LIKE '%"sports"%'
+   OR tags LIKE '%"sports"%'
+   OR format_signals LIKE '%"sports_session"%'
+LIMIT 20;
+
+-- Arts and crafts workshops:
+SELECT title, source_url FROM scrape_record
+WHERE topic_signals LIKE '%"arts_crafts"%'
+   OR format_signals LIKE '%"craft_session"%'
+   OR title LIKE '%craft%' OR title LIKE '%painting%' OR title LIKE '%pottery%'
+LIMIT 20;
 """

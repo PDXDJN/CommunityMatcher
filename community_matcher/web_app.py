@@ -85,12 +85,27 @@ def _persist_session(session_id: str, state: SessionState) -> None:
 # Nightly search terms derived from archetype vocabulary + interest clusters.
 # Rotated across two batches so alternate nights cover different archetypes.
 _SCHEDULER_TERMS_A = [
+    # Tech archetypes
     "tech community Berlin", "AI meetup Berlin", "machine learning Berlin",
     "startup networking Berlin", "python developer Berlin", "data science Berlin",
+    # Arts & lifestyle
+    "photography Berlin community", "arts crafts workshop Berlin",
+    "board games Berlin", "running club Berlin", "cycling Berlin",
 ]
 _SCHEDULER_TERMS_B = [
+    # Tech archetypes
     "maker hackspace Berlin", "gaming community Berlin", "design community Berlin",
     "social coding Berlin", "newcomer Berlin community", "cybersecurity Berlin",
+    # Arts & lifestyle
+    "painting drawing Berlin", "dance social Berlin", "choir singing Berlin",
+    "urban sketching Berlin", "tabletop RPG Berlin", "hiking nature Berlin",
+]
+_SCHEDULER_TERMS_C = [
+    # Broader non-tech sweep (used on day % 3 == 2)
+    "pottery ceramics Berlin", "knitting sewing Berlin", "open mic Berlin",
+    "salsa tango Berlin", "bouldering climbing Berlin", "book club Berlin",
+    "photo walk Berlin", "volleyball basketball Berlin", "urban gardening Berlin",
+    "language exchange Berlin", "expat social Berlin",
 ]
 _SCHEDULER_SOURCES = ["meetup", "luma", "mobilize", "ical", "github"]
 
@@ -108,9 +123,9 @@ def _run_scheduled_collection() -> None:
         from community_collector.orchestrator import run_collection
         from community_collector.config import CollectorConfig
         log.info("scheduler.collection_start")
-        # Alternate batches by day-of-year parity
-        day_parity = datetime.date.today().toordinal() % 2
-        terms = _SCHEDULER_TERMS_A if day_parity == 0 else _SCHEDULER_TERMS_B
+        # Rotate across 3 term batches by day-of-year modulus
+        day_slot = datetime.date.today().toordinal() % 3
+        terms = [_SCHEDULER_TERMS_A, _SCHEDULER_TERMS_B, _SCHEDULER_TERMS_C][day_slot]
         cfg = CollectorConfig(
             search_terms=terms,
             sources_to_run=_SCHEDULER_SOURCES,
