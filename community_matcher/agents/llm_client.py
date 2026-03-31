@@ -62,12 +62,13 @@ def llm_json(
     system_prompt: str,
     user_message: str,
     temperature: float = 0.0,
+    timeout: tuple[int, int] = (10, 60),
 ) -> str:
     """
     Like llm_chat but also strips markdown code fences (```json … ```).
     Returns the raw JSON string (not parsed). Caller must json.loads() it.
     """
-    raw = llm_chat(system_prompt, user_message, temperature=temperature)
+    raw = llm_chat(system_prompt, user_message, temperature=temperature, timeout=timeout)
     # Strip markdown fences
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
     raw = re.sub(r"\s*```$", "", raw)

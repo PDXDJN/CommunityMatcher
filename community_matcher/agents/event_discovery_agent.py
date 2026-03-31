@@ -44,7 +44,7 @@ def event_discovery_tool(brief_json: str) -> str:
             isinstance(db_results, dict)
             or (isinstance(db_results, list) and len(db_results) < _SEMANTIC_FALLBACK_THRESHOLD)
         ):
-            fallback_raw = semantic_search_tool(intent_str)
+            fallback_raw = semantic_search_tool(intent_str, json.dumps(brief.get("interests", [])))
             fallback_rows = json.loads(fallback_raw) if fallback_raw else []
             if isinstance(fallback_rows, list) and fallback_rows:
                 existing_urls = {

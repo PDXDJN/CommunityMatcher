@@ -136,6 +136,43 @@ _SYNONYM_MAP: dict[str, list[str]] = {
     "technical": ["technical"],
 }
 
+_LLM_EXPANSION_SYSTEM_PROMPT = """\
+You are a search tag expander for CommunityMatcher Berlin.
+
+Given a user's profile interests and their current search query, output a JSON
+array of 5-10 tag slugs that are highly relevant to what the user is looking for.
+Use lowercase with underscores. Prefer tags from the known vocabulary.
+
+Known tag vocabulary (prefer these):
+ai, python, data_science, startup, cloud, cybersecurity, blockchain, maker,
+design, gaming, social_coding, language_exchange, music, art, fitness,
+wellness, tech, workshop, talk, conference, hackathon, demo_night, barcamp,
+coworking, beginner_friendly, newcomer_city, english_friendly, lgbtq_friendly,
+free, grassroots, casual, technical, networking, career_oriented, community,
+social, meetup_event
+
+Output ONLY a JSON array of strings. No explanation. No markdown fences.
+Example: ["ai", "python", "workshop", "beginner_friendly"]
+"""
+
+
+def _llm_expand_tags(query: str, profile_interests: list[str]) -> list[str]:
+    """
+    Ask the LLM to generate related tag slugs for the query + user interests.
+    Returns an empty list on any failure so callers degrade to synonym map only.
+    """
+    try:
+        from community_matcher.agents.llm_client import llm_json
+        user_msg = f"User interests: {profile_interests}\nSearch query: {query}"
+        raw = llm_json(_LLM_EXPANSION_SYSTEM_PROMPT, user_msg, timeout=(5, 20))
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [str(t).lower().strip() for t in parsed if t][:10]
+    except Exception as exc:
+        log.debug("semantic_search.llm_expand_failed", error=str(exc))
+    return []
+
+
 # Maximum results from each search path before merge
 _MAX_TAG_RESULTS = 30
 _MAX_TEXT_RESULTS = 20
@@ -207,7 +244,7 @@ def _build_text_sql(words: list[str]) -> str | None:
 
 
 @tool
-def semantic_search_tool(query: str) -> str:
+def semantic_search_tool(query: str, profile_interests_json: str = "[]") -> str:
     """
     Semantic keyword search over community/event title and description text.
 
@@ -219,11 +256,15 @@ def semantic_search_tool(query: str) -> str:
 
     Strategy:
       1. Expand query phrases to known DB tags via synonym map.
-      2. Run LIKE search on title + description for remaining terms.
-      3. Merge and deduplicate by source_url.
+      2. Augment with LLM-generated tags based on user interests + query.
+      3. Run LIKE search on title + description for remaining terms.
+      4. Merge and deduplicate by source_url.
 
     Args:
         query: Natural language description of what the user is looking for.
+        profile_interests_json: Optional JSON array of the user's known interest
+            tags (e.g. '["ai", "python"]'). When provided, the LLM generates
+            additional related tags to broaden the search.
 
     Returns:
         JSON array of matching scrape_record rows, or JSON error object.
@@ -232,6 +273,25 @@ def semantic_search_tool(query: str) -> str:
 
     try:
         tags = _expand_to_tags(query)
+
+        # LLM-based expansion: augment synonym-map tags with model-generated tags
+        try:
+            _profile_interests: list[str] = json.loads(profile_interests_json or "[]")
+        except Exception:
+            _profile_interests = []
+        _llm_tags = _llm_expand_tags(query, _profile_interests)
+        _seen_tags = set(tags)
+        for _t in _llm_tags:
+            if _t not in _seen_tags:
+                tags.append(_t)
+                _seen_tags.add(_t)
+        if _llm_tags:
+            log.info(
+                "semantic_search.llm_expansion",
+                query=query[:80],
+                llm_tags=_llm_tags,
+            )
+
         words = _words_from_query(query)
 
         tag_rows: list[dict] = []

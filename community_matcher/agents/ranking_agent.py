@@ -9,11 +9,26 @@ orchestrator pipeline (from vibe_classifier_tool and risk_sanity_tool).
 """
 from __future__ import annotations
 import json
+from pathlib import Path
 import structlog
 from community_matcher.agents import tool
+from community_matcher.agents.embedding_cache import embed, cosine_sim
 from community_matcher.config.settings import settings
 
 log = structlog.get_logger()
+
+# ── Interest taxonomy (loaded once at module import) ──────────────────────────
+def _load_taxonomy() -> dict[str, list[str]]:
+    taxonomy_path = Path(__file__).parent.parent / "data" / "interest_taxonomy.json"
+    try:
+        with open(taxonomy_path, "r", encoding="utf-8") as f:
+            return json.loads(f.read())
+    except Exception as exc:
+        log.warning("ranking.taxonomy_load_failed", error=str(exc))
+        return {}
+
+_INTEREST_TAXONOMY: dict[str, list[str]] = _load_taxonomy()
+_TAXONOMY_PARTIAL_WEIGHT: float = 0.7
 
 # Tags that indicate English-language events
 _ENGLISH_TAGS = {"english_friendly", "english", "international"}
@@ -45,16 +60,64 @@ def _parse_tags(tags_field) -> list[str]:
     return []
 
 
-def _interest_alignment(profile_interests: list[str], candidate_tags: list[str]) -> float:
-    """Jaccard-like overlap between profile interests and candidate tags."""
+def _interest_alignment(
+    profile_interests: list[str],
+    candidate_tags: list[str],
+    candidate_full_text: str = "",
+) -> float:
+    """
+    Multi-strategy interest alignment:
+      1. Embedding cosine similarity (sentence-transformers all-MiniLM-L6-v2).
+      2. Taxonomy partial credit for adjacent interests (0.7 weight).
+      3. Jaccard fallback when sentence-transformers is unavailable.
+    """
     if not profile_interests:
         return 0.5  # neutral when profile has no interests yet
+
+    # ── Strategy 1: Embedding-based similarity ────────────────────────────────
+    interest_text = " ".join(profile_interests)
+    candidate_text = candidate_full_text if candidate_full_text else " ".join(candidate_tags)
+
+    interest_vec = embed(interest_text)
+    candidate_vec = embed(candidate_text)
+
+    if interest_vec is not None and candidate_vec is not None:
+        sim = cosine_sim(interest_vec, candidate_vec)
+        # sim ∈ [0, 1] for normalized embeddings; scale: 0→0.05, 0.3→~0.5, 0.6+→~1.0
+        embedding_score = min(1.0, max(0.05, sim * 1.5))
+
+        # ── Strategy 2: Taxonomy boost on top of embedding score ──────────────
+        profile_set = set(profile_interests)
+        tag_set = set(candidate_tags)
+        taxonomy_boost = 0.0
+        for interest in profile_set:
+            related = set(_INTEREST_TAXONOMY.get(interest, []))
+            for ctag in tag_set:
+                if interest in _INTEREST_TAXONOMY.get(ctag, []):
+                    related.add(ctag)
+            if tag_set & related:
+                taxonomy_boost += _TAXONOMY_PARTIAL_WEIGHT / len(profile_set)
+
+        return min(1.0, embedding_score + taxonomy_boost * 0.3)
+
+    # ── Strategy 3: Taxonomy + Jaccard fallback ───────────────────────────────
     profile_set = set(profile_interests)
     tag_set = set(candidate_tags)
-    overlap = len(profile_set & tag_set)
-    if overlap == 0:
+    total_score = 0.0
+    for interest in profile_set:
+        if interest in tag_set:
+            total_score += 1.0
+        else:
+            related = set(_INTEREST_TAXONOMY.get(interest, []))
+            for ctag in tag_set:
+                if interest in _INTEREST_TAXONOMY.get(ctag, []):
+                    related.add(ctag)
+            if tag_set & related:
+                total_score += _TAXONOMY_PARTIAL_WEIGHT
+
+    if total_score == 0.0:
         return 0.1
-    return min(1.0, overlap / len(profile_set) * 1.5)  # scale up partial matches
+    return min(1.0, total_score / len(profile_set) * 1.5)
 
 
 def _vibe_alignment(profile_social_mode: str | None, vibe: dict) -> float:
@@ -167,7 +230,7 @@ def _score_candidate(candidate: dict, profile: dict) -> dict:
     values_score, dealbreaker_hit = _values_fit(dealbreakers, combined_text, vibe)
 
     scores = {
-        "interest_alignment":    round(_interest_alignment(interests, tags), 3),
+        "interest_alignment":    round(_interest_alignment(interests, tags, combined_text), 3),
         "vibe_alignment":        round(max(0.0, min(1.0, _vibe_alignment(social_mode, vibe))), 3),
         "newcomer_friendliness": round(vibe.get("newcomer_friendliness", 0.5), 3),
         "logistics_fit":         round(_logistics_fit(logistics, tags, combined_text), 3),

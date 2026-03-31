@@ -50,7 +50,7 @@ def group_discovery_tool(brief_json: str) -> str:
             semantic_query = intent_str
             if archetype_str:
                 semantic_query += f" {archetype_str}"
-            fallback_raw = semantic_search_tool(semantic_query)
+            fallback_raw = semantic_search_tool(semantic_query, json.dumps(brief.get("interests", [])))
             fallback_rows = json.loads(fallback_raw) if fallback_raw else []
             if isinstance(fallback_rows, list) and fallback_rows:
                 # Merge with any existing rows, dedup by source_url
